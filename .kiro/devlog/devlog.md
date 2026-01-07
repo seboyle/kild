@@ -27,12 +27,12 @@
 ## Development Statistics
 
 ### Overall Progress
-- **Total Development Days**: 1
-- **Total Hours Logged**: 0.8h
+- **Total Development Days**: 2
+- **Total Hours Logged**: 1.8h
 - **Total Commits**: 1 (initial template)
-- **Lines of Code Added**: ~387
+- **Lines of Code Added**: ~437
 - **Lines of Code Removed**: 0
-- **Files Modified**: 2
+- **Files Modified**: 5
 
 ### Kiro CLI Usage
 - **Total Prompts Used**: [Auto-updated by @add-to-devlog]
@@ -43,13 +43,14 @@
 ### Time Breakdown by Category
 | Category | Hours | Percentage |
 |----------|-------|------------|
-| Planning & Design | 0.3h | 37.5% |
+| Planning & Design | 0.3h | 16.7% |
 | Backend Development | 0h | 0% |
 | Frontend Development | 0h | 0% |
-| Testing & Debugging | 0h | 0% |
-| Documentation | 0.5h | 62.5% |
+| Testing & Debugging | 0.2h | 11.1% |
+| Documentation | 0.6h | 33.3% |
 | DevOps & Deployment | 0h | 0% |
-| **Total** | **0.8h** | **100%** |
+| Tool Development | 0.7h | 38.9% |
+| **Total** | **1.8h** | **100%** |
 
 ---
 
@@ -185,5 +186,79 @@
 - Explore customization options for more autonomous workflows
 - Start deciding on hackathon project direction and scope
 - Investigate ways to make development flow less rigid and more autonomous
+
+---
+## Day 2 (January 06, 2026) - Kiro Subagents & Code Review Swarm [1.0h]
+
+### 📊 **Daily Metrics**
+- **Time Spent**: 1.0h (60 minutes)
+- **Commits Made**: 0 (testing and exploration phase)
+- **Lines Added**: ~50 (branch-counter.py modifications)
+- **Lines Removed**: 0
+- **Net Lines**: +50
+- **Files Modified**: 3 (branch-counter.py, code review artifacts created)
+
+### 🎯 **Accomplishments**
+- Successfully learned and tested Kiro subagent functionality
+- Built and deployed a code review agent swarm system
+- Compared Kiro subagents to Claude Code capabilities
+- Created comprehensive code review artifacts and reports
+- Shared code review swarm on GitHub for other hackathon participants
+- Achieved solid success with multi-agent code review workflow
+
+### 💻 **Technical Progress**
+**Repository Status:**
+- No commits made (exploration and testing phase)
+- Created code review artifacts in `.kiro/artifacts/`
+- Modified branch-counter.py for testing purposes
+
+**Files Created/Modified:**
+- `branch-counter.py` (1871 bytes) - Test subject for code review
+- `.kiro/artifacts/code-review-reports/PR-1-comprehensive-review.md` (3685 bytes)
+- `.kiro/artifacts/simplification-reviews/PR-1-simplification-review.md` (5904 bytes)
+- `README.md` updated (8208 bytes)
+
+**Code Review Swarm Results:**
+- Generated comprehensive code review with 4 specialized agents
+- Identified critical error handling issues and type safety problems
+- Produced actionable recommendations with severity levels
+- Successfully demonstrated multi-agent collaboration workflow
+
+### 🔧 **Work Breakdown**
+- **Subagent Learning & Setup**: 0.3h - Understanding Kiro subagent architecture and capabilities
+- **Code Review Swarm Development**: 0.4h - Building and configuring multi-agent review system
+- **Testing & Validation**: 0.2h - Running code review on sample code, analyzing results
+- **Documentation & Sharing**: 0.1h - Preparing GitHub share for hackathon community
+
+### 🚧 **Challenges & Solutions**
+- **Tool Limitations**: Subagents have restricted tool access (no web search, web fetch)
+  - **Impact**: Limited to core tools (read, write, bash, MCP)
+  - **Workaround**: Focused on file-based analysis and local operations
+- **Learning Curve**: Minimal due to similarity with Claude Code
+  - **Solution**: Leveraged existing Claude Code experience for quick adoption
+
+### 🧠 **Key Decisions**
+- Chose to focus on subagent exploration rather than main project development
+- Decided to build reusable code review system for hackathon community
+- Prioritized understanding Kiro's multi-agent capabilities over feature development
+
+### 📚 **Learnings & Insights**
+- Kiro subagents work very similarly to Claude Code, making transition smooth
+- Multi-agent code review provides comprehensive analysis with specialized perspectives
+- Tool restrictions in subagents require different approach than full-featured agents
+- Subagent collaboration can produce high-quality, structured outputs
+- GitHub sharing of tools can benefit broader hackathon community
+
+### ⚡ **Kiro CLI Usage**
+- Explored subagent creation and management workflows
+- Tested multi-agent coordination and output aggregation
+- Used artifact generation for structured code review reports
+- Learned subagent tool limitations and workarounds
+
+### 📋 **Next Session Plan**
+- Deep dive into Kiro Powers functionality and capabilities
+- Explore MCP (Model Context Protocol) integration options
+- Begin actual hackathon project planning and architecture decisions
+- Investigate how Powers can complement subagent workflows
 
 ---
