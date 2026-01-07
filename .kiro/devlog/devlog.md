@@ -1,10 +1,10 @@
-# Development Log - [Project Name]
+# Development Log - SHARDS
 
-**Project**: [Your Project Name Here]  
+**Project**: SHARDS  
 **Hackathon**: Dynamous + Kiro Hackathon  
 **Duration**: January 5-23, 2026  
-**Developer**: [Your Name]  
-**Repository**: [Repository URL]  
+**Developer**: Rasmus Widing  
+**Repository**: https://github.com/Wirasm/shards  
 
 ## Project Overview
 [Brief description of what you're building and why]
