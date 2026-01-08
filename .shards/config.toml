@@ -1,0 +1,22 @@
+# Shards CLI Default Configuration
+# Copy this file to ~/.shards/config.toml to customize your setup
+
+# Terminal to use: "auto", "terminal", "ghostty"
+# "auto" will detect Ghostty if available, otherwise use Terminal.app
+terminal = "auto"
+
+# Default agent command to use when no command is specified
+# Leave empty to prompt user to choose from agent profiles
+default_agent = ""
+
+# Agent profiles - predefined commands for different AI assistants
+[agents]
+kiro = "kiro-cli chat"
+claude = "claude"
+cc = "cc"  # Claude Code alias
+gemini = "gemini-cli"
+
+# Example usage:
+# shards start my-task --agent kiro
+# shards start feature-work --agent claude
+# shards start quick-fix cc  # direct command override
