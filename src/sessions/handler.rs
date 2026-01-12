@@ -1,13 +1,13 @@
 use tracing::info;
 
-use crate::core::config::Config;
+use crate::core::config::{Config, ShardsConfig};
 use crate::git;
 use crate::sessions::{errors::SessionError, operations, types::*};
 use crate::terminal;
 
-pub fn create_session(request: CreateSessionRequest) -> Result<Session, SessionError> {
-    let agent = request.agent();
-    let agent_command = operations::get_agent_command(&agent);
+pub fn create_session(request: CreateSessionRequest, shards_config: &ShardsConfig) -> Result<Session, SessionError> {
+    let agent = request.agent_or_default(&shards_config.agent.default);
+    let agent_command = shards_config.get_agent_command(&agent);
 
     info!(
         event = "session.create_started",
@@ -37,7 +37,8 @@ pub fn create_session(request: CreateSessionRequest) -> Result<Session, SessionE
     // Ensure sessions directory exists
     operations::ensure_sessions_directory(&config.sessions_dir())?;
     
-    let worktree = git::handler::create_worktree(&config.shards_dir, &project, &validated.name)
+    let base_config = Config::new();
+    let worktree = git::handler::create_worktree(&base_config.shards_dir, &project, &validated.name)
         .map_err(|e| SessionError::GitError { source: e })?;
 
     info!(
@@ -48,7 +49,7 @@ pub fn create_session(request: CreateSessionRequest) -> Result<Session, SessionE
     );
 
     // 5. Launch terminal (I/O)
-    let _spawn_result = terminal::handler::spawn_terminal(&worktree.path, &validated.command)
+    let _spawn_result = terminal::handler::spawn_terminal(&worktree.path, &validated.command, shards_config)
         .map_err(|e| SessionError::TerminalError { source: e })?;
 
     // 6. Create session record
