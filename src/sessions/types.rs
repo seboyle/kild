@@ -10,6 +10,9 @@ pub struct Session {
     pub agent: String,
     pub status: SessionStatus,
     pub created_at: String,
+    pub port_range_start: u16,
+    pub port_range_end: u16,
+    pub port_count: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,6 +63,9 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 3000,
+            port_range_end: 3009,
+            port_count: 10,
         };
 
         assert_eq!(session.branch, "branch");
