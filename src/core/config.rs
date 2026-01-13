@@ -38,6 +38,7 @@
 
 use std::path::PathBuf;
 use std::collections::HashMap;
+use crate::files::types::IncludeConfig;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use tracing;
@@ -56,6 +57,8 @@ pub struct ShardsConfig {
     pub terminal: TerminalConfig,
     #[serde(default)]
     pub agents: HashMap<String, AgentSettings>,
+    #[serde(default)]
+    pub include_patterns: Option<IncludeConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +182,7 @@ impl ShardsConfig {
                 }
                 merged
             },
+            include_patterns: override_config.include_patterns.or(base.include_patterns),
         }
     }
     
