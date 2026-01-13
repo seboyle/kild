@@ -3,6 +3,7 @@ use tracing::{error, info};
 
 use crate::cleanup;
 use crate::core::events;
+use crate::core::config::ShardsConfig;
 use crate::sessions::{handler as session_handler, types::CreateSessionRequest};
 
 pub fn run_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -22,17 +23,34 @@ pub fn run_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error
 
 fn handle_create_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
     let branch = matches.get_one::<String>("branch").unwrap();
-    let agent = matches.get_one::<String>("agent").cloned();
+    
+    // Load config hierarchy
+    let mut config = ShardsConfig::load_hierarchy().unwrap_or_default();
+    
+    // Apply CLI overrides only if provided
+    let agent_override = matches.get_one::<String>("agent").cloned();
+    if let Some(agent) = &agent_override {
+        config.agent.default = agent.clone();
+    }
+    if let Some(terminal) = matches.get_one::<String>("terminal") {
+        config.terminal.preferred = Some(terminal.clone());
+    }
+    if let Some(startup_command) = matches.get_one::<String>("startup-command") {
+        config.agent.startup_command = Some(startup_command.clone());
+    }
+    if let Some(flags) = matches.get_one::<String>("flags") {
+        config.agent.flags = Some(flags.clone());
+    }
 
     info!(
         event = "cli.create_started",
         branch = branch,
-        agent = agent.as_deref().unwrap_or("claude")
+        agent = config.agent.default
     );
 
-    let request = CreateSessionRequest::new(branch.clone(), agent);
+    let request = CreateSessionRequest::new(branch.clone(), agent_override);
 
-    match session_handler::create_session(request) {
+    match session_handler::create_session(request, &config) {
         Ok(session) => {
             println!("✅ Shard created successfully!");
             println!("   Branch: {}", session.branch);

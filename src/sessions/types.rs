@@ -40,6 +40,10 @@ impl CreateSessionRequest {
     pub fn agent(&self) -> String {
         self.agent.clone().unwrap_or_else(|| "claude".to_string())
     }
+
+    pub fn agent_or_default(&self, default: &str) -> String {
+        self.agent.clone().unwrap_or_else(|| default.to_string())
+    }
 }
 
 #[cfg(test)]

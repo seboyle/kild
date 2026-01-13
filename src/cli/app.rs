@@ -20,9 +20,24 @@ pub fn build_cli() -> Command {
                     Arg::new("agent")
                         .long("agent")
                         .short('a')
-                        .help("AI agent to launch")
-                        .value_parser(["claude", "kiro", "gemini", "codex"])
-                        .default_value("claude")
+                        .help("AI agent to launch (overrides config)")
+                        .value_parser(["claude", "kiro", "gemini", "codex", "aether"])
+                )
+                .arg(
+                    Arg::new("terminal")
+                        .long("terminal")
+                        .short('t')
+                        .help("Terminal to use (overrides config)")
+                )
+                .arg(
+                    Arg::new("startup-command")
+                        .long("startup-command")
+                        .help("Agent startup command (overrides config)")
+                )
+                .arg(
+                    Arg::new("flags")
+                        .long("flags")
+                        .help("Additional flags for agent (overrides config)")
                 )
         )
         .subcommand(
@@ -107,7 +122,8 @@ mod tests {
 
         let matches = matches.unwrap();
         let create_matches = matches.subcommand_matches("create").unwrap();
-        assert_eq!(create_matches.get_one::<String>("agent").unwrap(), "claude");
+        // Agent is now optional, should be None when not specified
+        assert!(create_matches.get_one::<String>("agent").is_none());
     }
 
     #[test]

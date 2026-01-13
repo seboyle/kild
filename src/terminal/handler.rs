@@ -2,11 +2,13 @@ use std::path::Path;
 use std::process::Command;
 use tracing::{debug, info};
 
+use crate::core::config::ShardsConfig;
 use crate::terminal::{errors::TerminalError, operations, types::*};
 
 pub fn spawn_terminal(
     working_directory: &Path,
     command: &str,
+    config: &ShardsConfig,
 ) -> Result<SpawnResult, TerminalError> {
     info!(
         event = "terminal.spawn_started",
@@ -14,7 +16,16 @@ pub fn spawn_terminal(
         command = command
     );
 
-    let terminal_type = operations::detect_terminal()?;
+    let terminal_type = if let Some(preferred) = &config.terminal.preferred {
+        // Try to use preferred terminal, fall back to detection if not available
+        match preferred.as_str() {
+            "iterm2" | "iterm" => TerminalType::ITerm,
+            "terminal" => TerminalType::TerminalApp,
+            _ => operations::detect_terminal()?,
+        }
+    } else {
+        operations::detect_terminal()?
+    };
 
     debug!(
         event = "terminal.detect_completed",
@@ -22,13 +33,13 @@ pub fn spawn_terminal(
         working_directory = %working_directory.display()
     );
 
-    let config = SpawnConfig::new(
+    let spawn_config = SpawnConfig::new(
         terminal_type.clone(),
         working_directory.to_path_buf(),
         command.to_string(),
     );
 
-    let spawn_command = operations::build_spawn_command(&config)?;
+    let spawn_command = operations::build_spawn_command(&spawn_config)?;
 
     debug!(
         event = "terminal.command_built",
@@ -88,7 +99,8 @@ mod tests {
 
     #[test]
     fn test_spawn_terminal_invalid_directory() {
-        let result = spawn_terminal(Path::new("/nonexistent/directory"), "echo hello");
+        let config = ShardsConfig::default();
+        let result = spawn_terminal(Path::new("/nonexistent/directory"), "echo hello", &config);
 
         assert!(result.is_err());
         if let Err(e) = result {
@@ -99,7 +111,8 @@ mod tests {
     #[test]
     fn test_spawn_terminal_empty_command() {
         let current_dir = std::env::current_dir().unwrap();
-        let result = spawn_terminal(&current_dir, "");
+        let config = ShardsConfig::default();
+        let result = spawn_terminal(&current_dir, "", &config);
 
         assert!(result.is_err());
         if let Err(e) = result {
