@@ -20,6 +20,23 @@ pub struct Session {
     pub port_range_end: u16,
     #[serde(default = "default_port_count")]
     pub port_count: u16,
+    
+    /// Process ID of the spawned terminal/agent process.
+    ///
+    /// This is `None` if:
+    /// - The session was created before PID tracking was implemented
+    /// - The terminal spawn failed to capture the PID
+    /// - The session is in a stopped state
+    ///
+    /// Note: PIDs can be reused by the OS, so this should be validated
+    /// against process name/start time before use.
+    pub process_id: Option<u32>,
+    
+    /// Process name captured at spawn time for PID reuse protection
+    pub process_name: Option<String>,
+    
+    /// Process start time captured at spawn time for PID reuse protection
+    pub process_start_time: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,6 +90,9 @@ mod tests {
             port_range_start: 3000,
             port_range_end: 3009,
             port_count: 10,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         assert_eq!(session.branch, "branch");

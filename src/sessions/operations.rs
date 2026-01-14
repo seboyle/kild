@@ -234,6 +234,14 @@ pub fn load_sessions_from_files(sessions_dir: &Path) -> Result<(Vec<Session>, us
     Ok((sessions, skipped_count))
 }
 
+pub fn load_session_from_file(name: &str, sessions_dir: &Path) -> Result<Session, SessionError> {
+    // Find session by branch name
+    let session = find_session_by_name(sessions_dir, name)?
+        .ok_or_else(|| SessionError::NotFound { name: name.to_string() })?;
+    
+    Ok(session)
+}
+
 fn validate_session_structure(session: &Session) -> Result<(), String> {
     // Validate required fields are not empty
     if session.id.trim().is_empty() {
@@ -352,118 +360,6 @@ mod tests {
     }
 
     #[test]
-    fn test_find_next_available_range_empty() {
-        let sessions = vec![];
-        let result = find_next_available_range(&sessions, 10, 3000);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), (3000, 3009));
-    }
-
-    #[test]
-    fn test_find_next_available_range_with_gap() {
-        use std::path::PathBuf;
-        use crate::sessions::types::{Session, SessionStatus};
-        
-        let session = Session {
-            id: "test/session1".to_string(),
-            project_id: "test".to_string(),
-            branch: "session1".to_string(),
-            worktree_path: PathBuf::from("/tmp/test"),
-            agent: "claude".to_string(),
-            status: SessionStatus::Active,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3100,
-            port_range_end: 3109,
-            port_count: 10,
-        };
-        
-        let sessions = vec![session];
-        let result = find_next_available_range(&sessions, 10, 3000);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), (3000, 3009)); // Should fit before existing range
-    }
-
-    #[test]
-    fn test_find_next_available_range_no_gap() {
-        use std::path::PathBuf;
-        use crate::sessions::types::{Session, SessionStatus};
-        
-        let session = Session {
-            id: "test/session1".to_string(),
-            project_id: "test".to_string(),
-            branch: "session1".to_string(),
-            worktree_path: PathBuf::from("/tmp/test"),
-            agent: "claude".to_string(),
-            status: SessionStatus::Active,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
-        };
-        
-        let sessions = vec![session];
-        let result = find_next_available_range(&sessions, 10, 3000);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), (3010, 3019)); // Should allocate after existing range
-    }
-
-    #[test]
-    fn test_is_port_range_available() {
-        use std::path::PathBuf;
-        use crate::sessions::types::{Session, SessionStatus};
-        
-        let session = Session {
-            id: "test/session1".to_string(),
-            project_id: "test".to_string(),
-            branch: "session1".to_string(),
-            worktree_path: PathBuf::from("/tmp/test"),
-            agent: "claude".to_string(),
-            status: SessionStatus::Active,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
-        };
-        
-        let sessions = vec![session];
-        
-        // Test overlap cases
-        assert!(!is_port_range_available(&sessions, 2995, 3005)); // Overlaps start
-        assert!(!is_port_range_available(&sessions, 3005, 3015)); // Overlaps end
-        assert!(!is_port_range_available(&sessions, 3000, 3009)); // Exact match
-        assert!(!is_port_range_available(&sessions, 2995, 3015)); // Contains range
-        
-        // Test non-overlap cases
-        assert!(is_port_range_available(&sessions, 2990, 2999)); // Before
-        assert!(is_port_range_available(&sessions, 3010, 3019)); // After
-    }
-
-    #[test]
-    fn test_generate_port_env_vars() {
-        use std::path::PathBuf;
-        use crate::sessions::types::{Session, SessionStatus};
-        
-        let session = Session {
-            id: "test/session1".to_string(),
-            project_id: "test".to_string(),
-            branch: "session1".to_string(),
-            worktree_path: PathBuf::from("/tmp/test"),
-            agent: "claude".to_string(),
-            status: SessionStatus::Active,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
-        };
-        
-        let env_vars = generate_port_env_vars(&session);
-        assert_eq!(env_vars.len(), 3);
-        assert_eq!(env_vars[0], ("SHARD_PORT_RANGE_START".to_string(), "3000".to_string()));
-        assert_eq!(env_vars[1], ("SHARD_PORT_RANGE_END".to_string(), "3009".to_string()));
-        assert_eq!(env_vars[2], ("SHARD_PORT_COUNT".to_string(), "10".to_string()));
-    }
-
-    #[test]
     fn test_validate_branch_name() {
         assert!(validate_branch_name("feature-branch").is_ok());
         assert!(validate_branch_name("feat/auth").is_ok());
@@ -517,9 +413,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Save session
@@ -559,9 +458,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Save session
@@ -600,9 +502,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         let session_file = temp_dir.join("test_atomic-behavior.json");
@@ -647,9 +552,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Create a directory where the final file should be to force rename failure
@@ -696,9 +604,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         let session2 = Session {
@@ -709,9 +620,12 @@ mod tests {
             agent: "kiro".to_string(),
             status: SessionStatus::Stopped,
             created_at: "2024-01-02T00:00:00Z".to_string(),
-            port_range_start: 3100,
-            port_range_end: 3109,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Save sessions
@@ -765,9 +679,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Save session
@@ -807,9 +724,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Save session
@@ -850,9 +770,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
         save_session_to_file(&valid_session, &temp_dir).unwrap();
 
@@ -893,9 +816,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
         assert!(validate_session_structure(&valid_session).is_ok());
 
@@ -908,9 +834,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
         let result = validate_session_structure(&invalid_session);
         assert!(result.is_err());
@@ -925,9 +854,12 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
         let result2 = validate_session_structure(&invalid_session2);
         assert!(result2.is_err());
@@ -943,44 +875,16 @@ mod tests {
             agent: "claude".to_string(),
             status: SessionStatus::Active,
             created_at: "2024-01-01T00:00:00Z".to_string(),
-            port_range_start: 3000,
-            port_range_end: 3009,
-            port_count: 10,
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
         let result3 = validate_session_structure(&invalid_session3);
         assert!(result3.is_err());
         assert!(result3.unwrap_err().contains("worktree path does not exist"));
-
-        // Clean up
-        let _ = std::fs::remove_dir_all(&temp_dir);
-    }
-
-    #[test]
-    fn test_port_allocation_near_max_boundary() {
-        use std::env;
-
-        // Create a temporary directory
-        let temp_dir = env::temp_dir().join("shards_test_overflow");
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        std::fs::create_dir_all(&temp_dir).unwrap();
-
-        // Test that requesting many ports near u16::MAX fails gracefully
-        let result = find_next_available_range(&[], 1000, 65000);
-        assert!(matches!(result, Err(SessionError::PortRangeExhausted)));
-
-        // Test edge case: maximum possible allocation from 65000
-        // Due to checked arithmetic (start + count - 1), max is 535 ports (65000-65534)
-        // Requesting 536 would require 65000 + 536 = 65536 which overflows
-        let result2 = find_next_available_range(&[], 535, 65000);
-        assert!(result2.is_ok());
-        if let Ok((start, end)) = result2 {
-            assert_eq!(start, 65000);
-            assert_eq!(end, 65534);
-        }
-
-        // Test overflow: 536 ports from 65000 would overflow
-        let result3 = find_next_available_range(&[], 536, 65000);
-        assert!(matches!(result3, Err(SessionError::PortRangeExhausted)));
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_dir);

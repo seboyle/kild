@@ -53,21 +53,35 @@ pub fn spawn_terminal(
         cmd.args(&spawn_command[1..]);
     }
 
-    let _child = cmd.spawn().map_err(|e| TerminalError::SpawnFailed {
+    let child = cmd.spawn().map_err(|e| TerminalError::SpawnFailed {
         message: format!("Failed to execute {}: {}", spawn_command[0], e),
     })?;
+
+    let process_id = child.id();
+
+    // Capture process metadata immediately for PID reuse protection
+    let (process_name, process_start_time) = if let Ok(info) = crate::process::get_process_info(process_id) {
+        (Some(info.name), Some(info.start_time))
+    } else {
+        (None, None)
+    };
 
     let result = SpawnResult::new(
         terminal_type.clone(),
         command.to_string(),
         working_directory.to_path_buf(),
+        Some(process_id),
+        process_name.clone(),
+        process_start_time,
     );
 
     info!(
         event = "terminal.spawn_completed",
         terminal_type = %terminal_type,
         working_directory = %working_directory.display(),
-        command = command
+        command = command,
+        process_id = process_id,
+        process_name = ?process_name
     );
 
     Ok(result)

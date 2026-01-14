@@ -1,4 +1,4 @@
-use tracing::{info, error};
+use tracing::{error, info};
 
 use crate::core::config::{Config, ShardsConfig};
 use crate::git;
@@ -73,7 +73,7 @@ pub fn create_session(request: CreateSessionRequest, shards_config: &ShardsConfi
     );
 
     // 5. Launch terminal (I/O)
-    let _spawn_result = terminal::handler::spawn_terminal(&worktree.path, &validated.command, shards_config)
+    let spawn_result = terminal::handler::spawn_terminal(&worktree.path, &validated.command, shards_config)
         .map_err(|e| SessionError::TerminalError { source: e })?;
 
     // 6. Create session record
@@ -88,6 +88,9 @@ pub fn create_session(request: CreateSessionRequest, shards_config: &ShardsConfi
         port_range_start: port_start,
         port_range_end: port_end,
         port_count: config.default_port_count,
+        process_id: spawn_result.process_id,
+        process_name: spawn_result.process_name.clone(),
+        process_start_time: spawn_result.process_start_time,
     };
 
     // 7. Save session to file
@@ -97,7 +100,9 @@ pub fn create_session(request: CreateSessionRequest, shards_config: &ShardsConfi
         event = "session.create_completed",
         session_id = session_id,
         branch = validated.name,
-        agent = session.agent
+        agent = session.agent,
+        process_id = session.process_id,
+        process_name = ?session.process_name
     );
 
     Ok(session)
@@ -122,6 +127,21 @@ pub fn list_sessions() -> Result<Vec<Session>, SessionError> {
     Ok(sessions)
 }
 
+pub fn get_session(name: &str) -> Result<Session, SessionError> {
+    info!(event = "session.get_started", name = name);
+
+    let config = Config::new();
+    let session = operations::load_session_from_file(name, &config.sessions_dir())?;
+
+    info!(
+        event = "session.get_completed",
+        name = name,
+        session_id = session.id
+    );
+
+    Ok(session)
+}
+
 pub fn destroy_session(name: &str) -> Result<(), SessionError> {
     info!(event = "session.destroy_started", name = name);
 
@@ -136,10 +156,43 @@ pub fn destroy_session(name: &str) -> Result<(), SessionError> {
         session_id = session.id,
         worktree_path = %session.worktree_path.display(),
         port_range_start = session.port_range_start,
-        port_range_end = session.port_range_end
+        port_range_end = session.port_range_end,
+        process_id = session.process_id
     );
 
-    // 2. Remove git worktree
+    // 2. Kill process if PID is tracked
+    if let Some(pid) = session.process_id {
+        info!(event = "session.destroy_kill_started", pid = pid);
+
+        match crate::process::kill_process(
+            pid,
+            session.process_name.as_deref(),
+            session.process_start_time,
+        ) {
+            Ok(()) => {
+                info!(event = "session.destroy_kill_completed", pid = pid);
+            }
+            Err(crate::process::ProcessError::NotFound { .. }) => {
+                info!(event = "session.destroy_kill_already_dead", pid = pid);
+            }
+            Err(e) => {
+                error!(
+                    event = "session.destroy_kill_failed",
+                    pid = pid,
+                    error = %e
+                );
+                return Err(SessionError::ProcessKillFailed {
+                    pid,
+                    message: format!(
+                        "Process still running. Kill it manually or use --force flag (not yet implemented): {}",
+                        e
+                    ),
+                });
+            }
+        }
+    }
+
+    // 3. Remove git worktree
     git::handler::remove_worktree_by_path(&session.worktree_path)
         .map_err(|e| SessionError::GitError { source: e })?;
 
@@ -149,7 +202,7 @@ pub fn destroy_session(name: &str) -> Result<(), SessionError> {
         worktree_path = %session.worktree_path.display()
     );
 
-    // 3. Remove session file (automatically frees port range)
+    // 4. Remove session file (automatically frees port range)
     operations::remove_session_file(&config.sessions_dir(), &session.id)?;
 
     info!(
@@ -226,6 +279,9 @@ mod tests {
             port_range_start: 3000,
             port_range_end: 3009,
             port_count: 10,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
         };
 
         // Create worktree directory so validation passes
