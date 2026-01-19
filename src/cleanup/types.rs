@@ -9,6 +9,14 @@ pub enum ResourceType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CleanupStrategy {
+    All,            // Clean everything (default)
+    NoPid,          // Only sessions with process_id: None
+    Stopped,        // Only sessions with stopped processes
+    OlderThan(u64), // Only sessions older than N days
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct OrphanedResource {
     pub resource_type: ResourceType,
     pub path: PathBuf,

@@ -39,7 +39,8 @@ pub fn run_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error
 }
 
 fn handle_create_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let branch = matches.get_one::<String>("branch").unwrap();
+    let branch = matches.get_one::<String>("branch")
+        .ok_or("Branch argument is required")?;
     
     // Load config hierarchy
     let mut config = ShardsConfig::load_hierarchy().unwrap_or_default();
@@ -170,7 +171,8 @@ fn handle_list_command() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_destroy_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let branch = matches.get_one::<String>("branch").unwrap();
+    let branch = matches.get_one::<String>("branch")
+        .ok_or("Branch argument is required")?;
 
     info!(event = "cli.destroy_started", branch = branch);
 
@@ -230,7 +232,8 @@ fn truncate(s: &str, max_len: usize) -> String {
 }
 
 fn handle_status_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
-    let branch = matches.get_one::<String>("branch").unwrap();
+    let branch = matches.get_one::<String>("branch")
+        .ok_or("Branch argument is required")?;
 
     info!(event = "cli.status_started", branch = branch);
 
