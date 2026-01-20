@@ -247,7 +247,7 @@ pub fn scan_for_orphans_with_strategy(strategy: CleanupStrategy) -> Result<Clean
             });
         }
         CleanupStrategy::NoPid => {
-            let sessions = operations::detect_sessions_without_pid(&config.sessions_dir())
+            let sessions = operations::detect_stale_sessions(&config.sessions_dir())
                 .map_err(|e| {
                     error!(event = "cleanup.strategy_failed", strategy = "NoPid", error = %e);
                     CleanupError::StrategyFailed { 
@@ -260,7 +260,7 @@ pub fn scan_for_orphans_with_strategy(strategy: CleanupStrategy) -> Result<Clean
             }
         }
         CleanupStrategy::Stopped => {
-            let sessions = operations::detect_sessions_with_stopped_processes(&config.sessions_dir())
+            let sessions = operations::detect_stale_sessions(&config.sessions_dir())
                 .map_err(|e| {
                     error!(event = "cleanup.strategy_failed", strategy = "Stopped", error = %e);
                     CleanupError::StrategyFailed { 
@@ -273,7 +273,7 @@ pub fn scan_for_orphans_with_strategy(strategy: CleanupStrategy) -> Result<Clean
             }
         }
         CleanupStrategy::OlderThan(days) => {
-            let sessions = operations::detect_old_sessions(&config.sessions_dir(), days)
+            let sessions = operations::detect_stale_sessions(&config.sessions_dir())
                 .map_err(|e| {
                     error!(event = "cleanup.strategy_failed", strategy = "OlderThan", error = %e);
                     CleanupError::StrategyFailed { 
