@@ -1,6 +1,17 @@
+//! Cleanup operations for detecting and managing orphaned resources.
+//!
+//! Current cleanup strategies focus on:
+//! - detect_stale_sessions: Sessions with missing/invalid worktrees
+//! - detect_orphaned_branches: Git branches without corresponding sessions
+//! - detect_orphaned_worktrees: Worktrees without corresponding sessions
+//!
+//! Note: Session-based detection strategies (PID-based, age-based) were
+//! considered but not integrated into the cleanup workflow as of 2026-01-20.
+
 use crate::cleanup::errors::CleanupError;
 use git2::{BranchType, Repository};
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 pub fn validate_cleanup_request() -> Result<(), CleanupError> {
     // Check if we're in a git repository
@@ -143,16 +154,28 @@ pub fn detect_stale_sessions(sessions_dir: &Path) -> Result<Vec<String>, Cleanup
                                 }
                             }
                         }
-                        Err(_) => {
-                            // Invalid JSON - consider it stale
+                        Err(e) => {
+                            // Invalid JSON - consider it stale and log for debugging
+                            warn!(
+                                event = "cleanup.malformed_session_file",
+                                file_path = %path.display(),
+                                error = %e,
+                                "Found malformed session file during cleanup scan"
+                            );
                             if let Some(file_name) = path.file_stem().and_then(|s| s.to_str()) {
                                 stale_sessions.push(file_name.to_string());
                             }
                         }
                     }
                 }
-                Err(_) => {
-                    // Can't read session file - consider it stale
+                Err(e) => {
+                    // Can't read session file - consider it stale and log for debugging
+                    warn!(
+                        event = "cleanup.unreadable_session_file",
+                        file_path = %path.display(),
+                        error = %e,
+                        "Found unreadable session file during cleanup scan"
+                    );
                     if let Some(file_name) = path.file_stem().and_then(|s| s.to_str()) {
                         stale_sessions.push(file_name.to_string());
                     }
@@ -164,126 +187,11 @@ pub fn detect_stale_sessions(sessions_dir: &Path) -> Result<Vec<String>, Cleanup
     Ok(stale_sessions)
 }
 
-pub fn detect_sessions_without_pid(sessions_dir: &Path) -> Result<Vec<String>, CleanupError> {
-    let mut sessions_without_pid = Vec::new();
 
-    if !sessions_dir.exists() {
-        return Ok(sessions_without_pid);
-    }
 
-    let entries =
-        std::fs::read_dir(sessions_dir).map_err(|e| CleanupError::IoError { source: e })?;
 
-    for entry in entries {
-        let entry = entry.map_err(|e| CleanupError::IoError { source: e })?;
-        let path = entry.path();
 
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    if let Ok(session) = serde_json::from_str::<serde_json::Value>(&content) {
-                        // Check if process_id is null or missing
-                        if session.get("process_id").and_then(|v| v.as_u64()).is_none() {
-                            if let Some(session_id) = session.get("id").and_then(|v| v.as_str()) {
-                                sessions_without_pid.push(session_id.to_string());
-                            }
-                        }
-                    }
-                }
-                Err(_) => continue,
-            }
-        }
-    }
 
-    Ok(sessions_without_pid)
-}
-
-pub fn detect_sessions_with_stopped_processes(
-    sessions_dir: &Path,
-) -> Result<Vec<String>, CleanupError> {
-    let mut stopped_sessions = Vec::new();
-
-    if !sessions_dir.exists() {
-        return Ok(stopped_sessions);
-    }
-
-    let entries =
-        std::fs::read_dir(sessions_dir).map_err(|e| CleanupError::IoError { source: e })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| CleanupError::IoError { source: e })?;
-        let path = entry.path();
-
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    if let Ok(session) = serde_json::from_str::<serde_json::Value>(&content) {
-                        // Check if process_id exists and process is not running
-                        if let Some(pid) = session.get("process_id").and_then(|v| v.as_u64()) {
-                            match crate::process::is_process_running(pid as u32) {
-                                Ok(false) => {
-                                    if let Some(session_id) =
-                                        session.get("id").and_then(|v| v.as_str())
-                                    {
-                                        stopped_sessions.push(session_id.to_string());
-                                    }
-                                }
-                                Ok(true) => continue,
-                                Err(_) => continue, // Process check failed, skip
-                            }
-                        }
-                    }
-                }
-                Err(_) => continue,
-            }
-        }
-    }
-
-    Ok(stopped_sessions)
-}
-
-pub fn detect_old_sessions(sessions_dir: &Path, days: u64) -> Result<Vec<String>, CleanupError> {
-    let mut old_sessions = Vec::new();
-
-    if !sessions_dir.exists() {
-        return Ok(old_sessions);
-    }
-
-    let cutoff_timestamp = chrono::Utc::now() - chrono::Duration::days(days as i64);
-    let entries =
-        std::fs::read_dir(sessions_dir).map_err(|e| CleanupError::IoError { source: e })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| CleanupError::IoError { source: e })?;
-        let path = entry.path();
-
-        if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    if let Ok(session) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(created_at) = session.get("created_at").and_then(|v| v.as_str())
-                        {
-                            if let Ok(created_time) =
-                                chrono::DateTime::parse_from_rfc3339(created_at)
-                            {
-                                if created_time.with_timezone(&chrono::Utc) < cutoff_timestamp {
-                                    if let Some(session_id) =
-                                        session.get("id").and_then(|v| v.as_str())
-                                    {
-                                        old_sessions.push(session_id.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_) => continue,
-            }
-        }
-    }
-
-    Ok(old_sessions)
-}
 
 #[cfg(test)]
 mod tests {
@@ -475,63 +383,64 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_sessions_without_pid() {
-        let temp_dir = env::temp_dir().join("shards_test_no_pid");
+    fn test_cleanup_workflow_integration() {
+        use std::env;
+        use std::fs;
+
+        // Create a temporary directory for testing
+        let temp_dir = env::temp_dir().join("shards_cleanup_integration_test");
         let _ = fs::create_dir_all(&temp_dir);
 
-        // Session with PID
-        let with_pid = serde_json::json!({
-            "id": "with-pid",
-            "process_id": 12345,
-            "worktree_path": temp_dir.to_str().unwrap(),
+        // Test that all detection functions work together
+        let stale_result = detect_stale_sessions(&temp_dir);
+        assert!(stale_result.is_ok());
+
+        // Test with a malformed session file
+        let malformed_content = "{ invalid json }";
+        fs::write(&temp_dir.join("malformed.json"), malformed_content).unwrap();
+
+        let stale_result = detect_stale_sessions(&temp_dir);
+        assert!(stale_result.is_ok());
+        let stale_sessions = stale_result.unwrap();
+        assert_eq!(stale_sessions.len(), 1);
+        assert_eq!(stale_sessions[0], "malformed");
+
+        // Test with a valid session file pointing to non-existent worktree
+        let valid_session = serde_json::json!({
+            "id": "test-session",
+            "worktree_path": "/non/existent/path",
+            "created_at": chrono::Utc::now().to_rfc3339(),
         });
-        fs::write(&temp_dir.join("with-pid.json"), with_pid.to_string()).unwrap();
+        fs::write(&temp_dir.join("valid.json"), valid_session.to_string()).unwrap();
 
-        // Session without PID
-        let without_pid = serde_json::json!({
-            "id": "without-pid",
-            "process_id": null,
-            "worktree_path": temp_dir.to_str().unwrap(),
-        });
-        fs::write(&temp_dir.join("without-pid.json"), without_pid.to_string()).unwrap();
+        let stale_result = detect_stale_sessions(&temp_dir);
+        assert!(stale_result.is_ok());
+        let stale_sessions = stale_result.unwrap();
+        assert_eq!(stale_sessions.len(), 2); // malformed + valid with missing worktree
 
-        let result = detect_sessions_without_pid(&temp_dir);
-        assert!(result.is_ok());
-        let sessions = result.unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "without-pid");
-
+        // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
-    fn test_detect_old_sessions() {
-        let temp_dir = env::temp_dir().join("shards_test_old");
+    fn test_cleanup_workflow_empty_directory() {
+        use std::env;
+        use std::fs;
+
+        // Test cleanup workflow with empty directory
+        let temp_dir = env::temp_dir().join("shards_cleanup_empty_test");
         let _ = fs::create_dir_all(&temp_dir);
 
-        // Recent session
-        let recent = serde_json::json!({
-            "id": "recent",
-            "created_at": chrono::Utc::now().to_rfc3339(),
-            "worktree_path": temp_dir.to_str().unwrap(),
-        });
-        fs::write(&temp_dir.join("recent.json"), recent.to_string()).unwrap();
+        let stale_result = detect_stale_sessions(&temp_dir);
+        assert!(stale_result.is_ok());
+        let stale_sessions = stale_result.unwrap();
+        assert_eq!(stale_sessions.len(), 0);
 
-        // Old session (10 days ago)
-        let old_time = chrono::Utc::now() - chrono::Duration::days(10);
-        let old = serde_json::json!({
-            "id": "old",
-            "created_at": old_time.to_rfc3339(),
-            "worktree_path": temp_dir.to_str().unwrap(),
-        });
-        fs::write(&temp_dir.join("old.json"), old.to_string()).unwrap();
-
-        let result = detect_old_sessions(&temp_dir, 7);
-        assert!(result.is_ok());
-        let sessions = result.unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0], "old");
-
+        // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+
+
+
 }
