@@ -61,6 +61,34 @@ pub struct ShardsConfig {
     pub agents: HashMap<String, AgentSettings>,
     #[serde(default)]
     pub include_patterns: Option<IncludeConfig>,
+    #[serde(default)]
+    pub health: HealthConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HealthConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_threshold_minutes: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub history_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_retention_days: Option<u64>,
+}
+
+impl HealthConfig {
+    pub fn idle_threshold_minutes(&self) -> i64 {
+        self.idle_threshold_minutes.unwrap_or(10)
+    }
+
+    pub fn refresh_interval_secs(&self) -> u64 {
+        self.refresh_interval_secs.unwrap_or(5)
+    }
+
+    pub fn history_retention_days(&self) -> u64 {
+        self.history_retention_days.unwrap_or(7)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +237,12 @@ impl ShardsConfig {
                 merged
             },
             include_patterns: override_config.include_patterns.or(base.include_patterns),
+            health: HealthConfig {
+                idle_threshold_minutes: override_config.health.idle_threshold_minutes.or(base.health.idle_threshold_minutes),
+                refresh_interval_secs: override_config.health.refresh_interval_secs.or(base.health.refresh_interval_secs),
+                history_enabled: override_config.health.history_enabled || base.health.history_enabled,
+                history_retention_days: override_config.health.history_retention_days.or(base.health.history_retention_days),
+            },
         }
     }
     
@@ -431,7 +465,7 @@ flags = "--yolo"
         // Test empty config
         let empty_config: ShardsConfig = toml::from_str("").unwrap();
         assert_eq!(empty_config.agent.default, "claude");
-        
+
         // Test partial config
         let partial_config: ShardsConfig = toml::from_str(r#"
 [terminal]
@@ -439,9 +473,55 @@ preferred = "iterm2"
 "#).unwrap();
         assert_eq!(partial_config.agent.default, "claude"); // Should use default
         assert_eq!(partial_config.terminal.preferred, Some("iterm2".to_string()));
-        
+
         // Test invalid TOML should fail
         let invalid_result: Result<ShardsConfig, _> = toml::from_str("invalid toml [[[");
         assert!(invalid_result.is_err());
+    }
+
+    #[test]
+    fn test_health_config_defaults() {
+        let config = ShardsConfig::default();
+        assert_eq!(config.health.idle_threshold_minutes(), 10);
+        assert_eq!(config.health.refresh_interval_secs(), 5);
+        assert!(!config.health.history_enabled);
+        assert_eq!(config.health.history_retention_days(), 7);
+    }
+
+    #[test]
+    fn test_health_config_from_toml() {
+        let config: ShardsConfig = toml::from_str(r#"
+[health]
+idle_threshold_minutes = 5
+history_enabled = true
+"#).unwrap();
+        assert_eq!(config.health.idle_threshold_minutes(), 5);
+        assert!(config.health.history_enabled);
+        // Defaults should still apply for unspecified fields
+        assert_eq!(config.health.refresh_interval_secs(), 5);
+        assert_eq!(config.health.history_retention_days(), 7);
+    }
+
+    #[test]
+    fn test_health_config_merge() {
+        let user_config: ShardsConfig = toml::from_str(r#"
+[health]
+idle_threshold_minutes = 15
+history_retention_days = 30
+"#).unwrap();
+
+        // Project config with only history_enabled set
+        let project_config: ShardsConfig = toml::from_str(r#"
+[health]
+history_enabled = true
+"#).unwrap();
+
+        let merged = ShardsConfig::merge_configs(user_config, project_config);
+
+        // User-set values should be preserved when project doesn't override
+        assert_eq!(merged.health.idle_threshold_minutes(), 15);
+        assert_eq!(merged.health.history_retention_days(), 30);
+        // Project-set values should be used
+        assert!(merged.health.history_enabled);
     }
 }
