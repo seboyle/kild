@@ -12,7 +12,7 @@ Shards creates isolated Git worktrees for parallel AI development sessions. Each
 
 ### Create a Shard
 ```bash
-shards create <branch> [--agent <agent>] [--flags <flags>] [--terminal-type <type>] [--startup-command <command>]
+shards create <branch> [--agent <agent>] [--flags <flags>] [--terminal <terminal>] [--startup-command <command>]
 ```
 
 Creates an isolated workspace with:
@@ -29,7 +29,7 @@ Creates an isolated workspace with:
 
 **Example**:
 ```bash
-shards create feature-auth --agent kiro --terminal-type ghostty
+shards create feature-auth --agent kiro --terminal ghostty
 shards create bug-fix-123 --agent claude --flags '--trust-all-tools'
 ```
 
@@ -47,23 +47,14 @@ Shows table with:
 - Process status (Running/Stopped with PID)
 - Command executed (actual command with flags)
 
-### Check Shard Status
-```bash
-shards status <branch>
-```
-
-Detailed view of specific shard:
-- Branch and agent info
-- Worktree path
-- Process status and metadata
-- Port range allocation
-
 ### Restart a Shard
 ```bash
 shards restart <branch> [--agent <agent>]
 ```
 
-Restarts agent process without destroying worktree:
+Restarts agent process without destroying worktree. Use `-a` as shorthand for `--agent`.
+
+What it does:
 - Kills existing process (if tracked)
 - Launches new terminal with same or different agent
 - Preserves worktree and uncommitted changes
@@ -75,34 +66,40 @@ shards restart feature-auth
 shards restart bug-fix-123 --agent claude
 ```
 
-### Check Shard Status
+### Status (Detailed View)
 ```bash
 shards status <branch>
 ```
 
-Detailed view of specific shard:
+Shows detailed info for a specific shard:
 - Branch and agent info
 - Worktree path
 - Process status and metadata
 - Port range allocation
 
-### Check Health Status
+**When to use**: When you need detailed information about a specific shard, not just the list overview.
+
+### Health Monitoring
 ```bash
-shards health [branch] [--json] [--all]
+shards health [branch] [--json] [--watch] [--interval <seconds>]
 ```
 
 Shows health dashboard with:
 - Process status (Working/Idle/Stuck/Crashed/Unknown)
 - CPU and memory usage metrics
-- Last activity tracking (planned feature)
 - Summary statistics
-- JSON output for programmatic use
+
+**Flags**:
+- `--json`: Output in JSON format for programmatic use
+- `--watch` / `-w`: Continuously refresh the display
+- `--interval` / `-i`: Refresh interval in seconds (default: 5)
 
 **Example**:
 ```bash
-shards health                    # Dashboard for current project
-shards health feature-auth       # Specific shard details
-shards health --json            # JSON output
+shards health                    # Dashboard for all shards in current project
+shards health feature-auth       # Specific shard health details
+shards health --json             # JSON output for scripting
+shards health --watch            # Live monitoring mode
 ```
 
 ### Destroy a Shard
@@ -110,27 +107,46 @@ shards health --json            # JSON output
 shards destroy <branch>
 ```
 
-Complete cleanup:
-1. Kills tracked process (validates PID to prevent reuse attacks)
-2. Removes Git worktree and branch
-3. Deletes session file (frees port range)
+Completely removes a specific shard. Use this when you're done with a shard.
+
+What it does:
+1. Closes the terminal window
+2. Kills tracked process (validates PID to prevent reuse attacks)
+3. Removes Git worktree and branch
+4. Deletes session file (frees port range)
+
+**When to use**: When you know which shard to remove. For orphaned/inconsistent resources, use `cleanup` instead.
 
 ### Cleanup Orphaned Resources
 ```bash
-shards cleanup [--no-pid] [--stopped] [--older-than <days>] [--all]
+shards cleanup [--all] [--orphans] [--no-pid] [--stopped] [--older-than <days>]
 ```
 
-Enhanced cleanup strategies:
-- `--no-pid`: Clean sessions without PID tracking
-- `--stopped`: Clean sessions with stopped processes  
-- `--older-than N`: Clean sessions older than N days
-- `--all`: Clean all orphaned resources (default)
+Cleans up resources that got out of sync. Use this when things go wrong (crashes, manual deletions, etc.).
+
+**Important distinction from `destroy`**:
+- `destroy <branch>` = Remove a specific shard you know about
+- `cleanup` = Find and remove orphaned/inconsistent resources
+
+**Flags**:
+- `--all`: Clean all orphaned resources (default behavior)
+- `--orphans`: Clean worktrees in `~/.shards/worktrees/` that have no matching session file
+- `--no-pid`: Clean sessions that have no PID tracking (failed spawns, old sessions)
+- `--stopped`: Clean sessions where the process has stopped/crashed
+- `--older-than <days>`: Clean sessions older than N days
+
+**When to use each flag**:
+- After a crash or force-quit: `shards cleanup --stopped`
+- After manually deleting worktrees: `shards cleanup --orphans`
+- Cleaning up old forgotten shards: `shards cleanup --older-than 7`
+- General housekeeping: `shards cleanup` or `shards cleanup --all`
 
 **Example**:
 ```bash
 shards cleanup                   # Clean all orphaned resources
-shards cleanup --no-pid         # Clean sessions without PID tracking
-shards cleanup --older-than 7   # Clean sessions older than 7 days
+shards cleanup --orphans         # Clean worktrees with no session
+shards cleanup --stopped         # Clean sessions with dead processes
+shards cleanup --older-than 7    # Clean sessions older than 7 days
 ```
 
 ## Configuration
