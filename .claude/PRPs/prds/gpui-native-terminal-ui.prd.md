@@ -145,12 +145,14 @@ Build a native GPUI application as a **visual dashboard** for shard management. 
 | 6 | Status Dashboard | Health indicators, refresh | Live status updates |
 | 7 | Favorites | Quick-spawn repos | Favorites work |
 | 8 | Theme & Components | Color palette + reusable UI components | Polished design, extracted TextInput/Button/Modal |
+| 9 | Keyboard Shortcuts | Full keyboard control | Navigate and operate UI without mouse |
 
 ### Dependency Graph
 
 ```
-Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8
-   │         │         │          │          │          │         │         │
+Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8 → Phase 9
+   │         │         │          │          │          │         │         │         │
+   │         │         │          │          │          │         │         │         └─ Power user (keyboard control)
    │         │         │          │          │          │         │         └─ Polish (theme + components)
    │         │         │          │          │          │         └─ Convenience
    │         │         │          │          │          └─ Polish (live updates)
@@ -572,13 +574,89 @@ cargo run -p shards-ui
 
 ---
 
+### Phase 9: Keyboard Shortcuts
+
+**Goal**: Full keyboard control of the UI - navigate, select, and operate without touching the mouse.
+
+**Why this phase exists**: Power users (our target audience) live in the keyboard. A dashboard that requires mouse clicks for everything is friction. Think Vim, Neovim, Superhuman - every action should be reachable via keyboard.
+
+**Philosophy**:
+- **Vim-inspired** - Modal where it makes sense, mnemonic shortcuts
+- **Discoverable** - Show available shortcuts contextually
+- **Consistent** - Same patterns throughout the UI
+- **Escapable** - Escape always returns to normal state
+
+**Files to Create**:
+| File | Purpose |
+|------|---------|
+| `src/ui/keybindings.rs` | Shortcut definitions and action mapping |
+| `src/ui/views/shortcut_hint.rs` | Footer showing available shortcuts |
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `src/ui/views/main_view.rs` | Add global key handlers, selection state |
+| `src/ui/views/shard_list.rs` | Add selection highlight, keyboard navigation |
+| `src/ui/views/create_dialog.rs` | Tab navigation between fields |
+
+**Core shortcuts** (tentative - refine during implementation):
+
+| Context | Key | Action |
+|---------|-----|--------|
+| Global | `c` | Open create dialog |
+| Global | `?` | Show all shortcuts |
+| Global | `/` | Focus search (future) |
+| Global | `r` | Refresh list |
+| List | `j` / `↓` | Move selection down |
+| List | `k` / `↑` | Move selection up |
+| List | `Enter` | Open selected shard details (future) |
+| List | `d` | Destroy selected shard (with confirm) |
+| List | `s` | Restart selected shard |
+| List | `g` | Go to first item |
+| List | `G` | Go to last item |
+| Dialog | `Tab` | Next field |
+| Dialog | `Shift+Tab` | Previous field |
+| Dialog | `Enter` | Submit |
+| Dialog | `Escape` | Cancel/close |
+
+**Selection model**:
+- One shard selected at a time (highlighted row)
+- Selection persists across refreshes (by session ID)
+- No selection = first item selected on `j`/`k`
+
+**Shortcut hints footer**:
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  j/k Navigate  │  c Create  │  d Destroy  │  s Restart  │  ? Help      │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Validation**:
+```bash
+cargo run -p shards-ui
+# Navigate list with j/k
+# Create shard with 'c' key
+# Fill dialog, submit with Enter
+# Select shard, destroy with 'd'
+# Press '?' to see all shortcuts
+# Verify Escape closes any dialog/modal
+```
+
+**What NOT to do**:
+- Don't implement command palette yet (future enhancement)
+- Don't add custom keybinding configuration
+- Don't conflict with system shortcuts (Cmd+Q, Cmd+W, etc.)
+- Don't require modifier keys for common actions (keep it simple: just `j`, not `Ctrl+j`)
+
+---
+
 ## Future Phases (Post-MVP)
 
 These come after the core dashboard is working and validated.
 
 ---
 
-### Phase 9+: Embedded Terminals
+### Phase 10+: Embedded Terminals
 
 **Goal**: Replace external terminals with embedded PTY terminals in the UI.
 
@@ -618,20 +696,20 @@ With embedded terminals, we gain:
 
 | Sub-phase | Focus |
 |-----------|-------|
-| 9a | PTY infrastructure (spawn, read, write) - no UI |
-| 9b | Basic terminal view (raw output in window) |
-| 9c | Full terminal rendering (colors, cursor, input) |
-| 9d | Replace external launch with embedded option |
-| 9e | User preference: embedded vs external |
+| 10a | PTY infrastructure (spawn, read, write) - no UI |
+| 10b | Basic terminal view (raw output in window) |
+| 10c | Full terminal rendering (colors, cursor, input) |
+| 10d | Replace external launch with embedded option |
+| 10e | User preference: embedded vs external |
 
-**Open questions for Phase 9**:
+**Open questions for Phase 10**:
 - Should embedded be the default, or opt-in?
 - Should we support both embedded AND external (user choice)?
 - What's the minimum viable terminal rendering? (Do we need full xterm compatibility?)
 
 ---
 
-### Phase 10+: Cross-Shard Orchestration (Future Vision)
+### Phase 11+: Cross-Shard Orchestration (Future Vision)
 
 **Goal**: Enable a main session to coordinate child shards.
 
@@ -642,7 +720,7 @@ With embedded terminals, we gain:
 - Collect their results
 
 **Prerequisites**:
-- Embedded terminals (Phase 9) - required to read/write to shards
+- Embedded terminals (Phase 10) - required to read/write to shards
 - Output buffering - store terminal history for querying
 - Command protocol - how main session addresses child shards
 
@@ -675,7 +753,7 @@ ui = ["dep:gpui"]
 gpui = { version = "0.2", optional = true }
 ```
 
-Note: We don't need `alacritty_terminal` or PTY crates for MVP. Those come with embedded terminals (Phase 9+).
+Note: We don't need `alacritty_terminal` or PTY crates for MVP. Those come with embedded terminals (Phase 10+).
 
 ### Platform Requirements
 
@@ -689,9 +767,9 @@ Note: We don't need `alacritty_terminal` or PTY crates for MVP. Those come with 
 
 ## Scope Boundary
 
-**This PRD covers Phases 1-8** (the MVP dashboard with external terminals, plus polish).
+**This PRD covers Phases 1-9** (the MVP dashboard with external terminals, polish, and keyboard control).
 
-Phases 9+ (embedded terminals, orchestration) are documented above for vision context, but are **separate PRDs** to be written after MVP validation. Don't let future vision creep into MVP implementation.
+Phases 10+ (embedded terminals, orchestration) are documented above for vision context, but are **separate PRDs** to be written after MVP validation. Don't let future vision creep into MVP implementation.
 
 ---
 
@@ -752,7 +830,7 @@ Each phase is a PR. Don't bleed work across phases. If Phase 3 validation passes
 |----------|--------|-----------|
 | Terminal approach | External terminals for MVP | Faster to value, reuses working code |
 | Platform | macOS first | CLI terminal launching already works |
-| Embedded terminals | Deferred to Phase 9+ | Hardest part, not needed for core value |
+| Embedded terminals | Deferred to Phase 10+ | Hardest part, not needed for core value |
 | UI framework | GPUI | Native performance, Rust ecosystem |
 | State management | Simple struct | YAGNI - no complex state libraries |
 
