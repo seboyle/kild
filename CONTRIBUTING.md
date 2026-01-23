@@ -67,7 +67,7 @@ info!(event = "cli.list_completed", count = sessions.len());
 
 // Core layer (in crates/shards-core/)
 info!(event = "core.session.create_completed", session_id = id);
-info!(event = "core.terminal.spawn_failed", error = %e);
+error!(event = "core.terminal.pid_file_process_check_failed", error = %e);
 info!(event = "core.git.worktree.create_started", branch = branch);
 ```
 

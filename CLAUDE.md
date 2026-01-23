@@ -148,7 +148,7 @@ debug!(event = "core.pid_file.read_attempt", attempt = attempt, path = %pid_file
 debug!(event = "core.terminal.applescript_executing", terminal = terminal_name);
 
 // Structured fields - use Display (%e) for errors, Debug (?val) for complex types
-error!(event = "core.session.create_failed", error = %e, branch = branch);
+error!(event = "core.session.destroy_kill_failed", pid = pid, error = %e);
 warn!(event = "core.files.walk.error", error = %e, path = %path.display());
 ```
 
