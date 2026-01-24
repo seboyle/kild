@@ -29,11 +29,15 @@
 //!
 //! ## Loading Configuration
 //!
-//! ```rust
+//! ```rust,no_run
 //! use shards_core::config::ShardsConfig;
 //!
-//! let config = ShardsConfig::load_hierarchy().unwrap_or_default();
-//! let agent_command = config.get_agent_command("claude");
+//! // Handle config errors explicitly - don't silently fall back to defaults
+//! fn example() -> Result<(), Box<dyn std::error::Error>> {
+//!     let config = ShardsConfig::load_hierarchy()?;
+//!     let agent_command = config.get_agent_command("claude")?;
+//!     Ok(())
+//! }
 //! ```
 
 pub mod defaults;
