@@ -310,8 +310,8 @@ Code {
 shards code feature-auth
 # VS Code opens with worktree
 
-EDITOR=vim shards code feature-auth
-# Vim opens with worktree
+EDITOR=zed shards code feature-auth
+# Zed opens with worktree
 ```
 
 **Files to modify**:
