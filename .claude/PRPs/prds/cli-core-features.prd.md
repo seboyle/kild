@@ -8,11 +8,11 @@
 
 ## Recent Changes
 
-| Date | Change |
-|------|--------|
-| 2026-01-24 | `--force` on destroy: DONE (Phase 6 lifecycle) |
+| Date       | Change                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| 2026-01-24 | `--force` on destroy: DONE (Phase 6 lifecycle)                                                 |
 | 2026-01-24 | Renamed `shards open` (editor) → `shards code` to avoid conflict with lifecycle `open` command |
-| 2026-01-24 | `shards restart` deprecated in favor of `shards open` (lifecycle) |
+| 2026-01-24 | `shards restart` deprecated in favor of `shards open` (lifecycle)                              |
 
 ---
 
@@ -43,6 +43,7 @@ The current CLI has solid infrastructure (create, list, destroy, open, stop, sta
 ### What This PRD Adds
 
 The missing pieces that make the CLI feel complete:
+
 - Session metadata (notes)
 - Quick navigation (cd, code, focus)
 - Git visibility (diff, commits)
@@ -82,14 +83,14 @@ Users managing multiple shards lack visibility and navigation tools:
 
 Essential features that significantly improve daily usability.
 
-| Feature | Command/Flag | Value | Status |
-|---------|--------------|-------|--------|
-| Session notes | `--note` on create, shown in list | Know what each shard is doing | TODO |
-| Print worktree path | `shards cd <branch>` | Fast navigation | TODO |
-| Open in editor | `shards code <branch>` | One command to start working | TODO |
-| JSON output | `--json` on list, status | Scriptability | TODO |
-| Quiet mode | `-q` / `--quiet` globally | Clean output | TODO |
-| Force destroy | `--force` on destroy | Skip confirmation for scripts | ✅ DONE |
+| Feature             | Command/Flag                      | Value                         | Status  |
+| ------------------- | --------------------------------- | ----------------------------- | ------- |
+| Session notes       | `--note` on create, shown in list | Know what each shard is doing | TODO    |
+| Print worktree path | `shards cd <branch>`              | Fast navigation               | TODO    |
+| Open in editor      | `shards code <branch>`            | One command to start working  | TODO    |
+| JSON output         | `--json` on list, status          | Scriptability                 | TODO    |
+| Quiet mode          | `-q` / `--quiet` globally         | Clean output                  | TODO    |
+| Force destroy       | `--force` on destroy              | Skip confirmation for scripts | ✅ DONE |
 
 **Note**: `shards code` (not `open`) because `shards open` is the lifecycle command for launching agents.
 
@@ -97,15 +98,15 @@ Essential features that significantly improve daily usability.
 
 Important features that improve workflow significantly.
 
-| Feature | Command/Flag | Value |
-|---------|--------------|-------|
-| Focus terminal | `shards focus <branch>` | Quick window switching |
-| Git diff | `shards diff <branch>` | See changes without entering worktree |
-| Git commits | `shards commits <branch>` | See work done |
-| Bulk destroy | `shards destroy --all` | Clean slate |
-| Bulk open | `shards open --all` | Launch agents in all stopped shards |
-| Bulk stop | `shards stop --all` | Stop all running agents |
-| Fuzzy matching | Partial branch names | Less typing |
+| Feature        | Command/Flag              | Value                                 |
+| -------------- | ------------------------- | ------------------------------------- |
+| Focus terminal | `shards focus <branch>`   | Quick window switching                |
+| Git diff       | `shards diff <branch>`    | See changes without entering worktree |
+| Git commits    | `shards commits <branch>` | See work done                         |
+| Bulk destroy   | `shards destroy --all`    | Clean slate                           |
+| Bulk open      | `shards open --all`       | Launch agents in all stopped shards   |
+| Bulk stop      | `shards stop --all`       | Stop all running agents               |
+| Fuzzy matching | Partial branch names      | Less typing                           |
 
 **Note**: `restart` is deprecated. Use `stop` then `open` for similar behavior, or `open --all` for bulk agent launch.
 
@@ -113,25 +114,25 @@ Important features that improve workflow significantly.
 
 Nice to have features that polish the experience.
 
-| Feature | Command/Flag | Value |
-|---------|--------------|-------|
-| Session history | `shards history` | See past sessions |
-| Quick aliases | `s1`, `s2` shortcuts | Even less typing |
-| Branch sync | `shards sync <branch>` | Keep branches updated |
-| Clone shard | `shards clone <from> <to>` | Safe experimentation |
+| Feature         | Command/Flag               | Value                 |
+| --------------- | -------------------------- | --------------------- |
+| Session history | `shards history`           | See past sessions     |
+| Quick aliases   | `s1`, `s2` shortcuts       | Even less typing      |
+| Branch sync     | `shards sync <branch>`     | Keep branches updated |
+| Clone shard     | `shards clone <from> <to>` | Safe experimentation  |
 
 ### Won't Have (This PRD)
 
 Out of scope - separate PRDs or future work.
 
-| Feature | Why Not |
-|---------|---------|
-| Templates | Tier 3, needs design work |
-| GitHub integration | Tier 3, separate PRD |
-| Tags | Tier 4, notes sufficient for now |
-| Output logging | Tier 4, complex implementation |
-| Shard groups | Tier 5, overkill for now |
-| tmux mode | Tier 5, different architecture |
+| Feature            | Why Not                          |
+| ------------------ | -------------------------------- |
+| Templates          | Tier 3, needs design work        |
+| GitHub integration | Tier 3, separate PRD             |
+| Tags               | Tier 4, notes sufficient for now |
+| Output logging     | Tier 4, complex implementation   |
+| Shard groups       | Tier 5, overkill for now         |
+| tmux mode          | Tier 5, different architecture   |
 
 ---
 
@@ -152,6 +153,7 @@ Each feature is a small, focused PR.
 **Changes Required**:
 
 1. **Session struct** (`src/sessions/types.rs`):
+
 ```rust
 pub struct Session {
     // ... existing fields ...
@@ -162,6 +164,7 @@ pub struct Session {
 ```
 
 2. **Create command** (`src/cli/app.rs`):
+
 ```rust
 #[arg(long, help = "Description of what this shard is for")]
 note: Option<String>,
@@ -174,6 +177,7 @@ note: Option<String>,
 4. **Session JSON**: Include note in serialization (already handled by serde)
 
 **Validation**:
+
 ```bash
 shards create feature-auth --note "Implementing JWT authentication"
 shards list
@@ -184,6 +188,7 @@ shards status feature-auth
 ```
 
 **Files to modify**:
+
 - `src/sessions/types.rs` - Add field
 - `src/cli/app.rs` - Add flag
 - `src/cli/commands/create.rs` - Pass note to session
@@ -197,6 +202,7 @@ shards status feature-auth
 **What**: Print the worktree path for shell integration.
 
 **Usage**:
+
 ```bash
 # Print path
 shards cd feature-auth
@@ -214,6 +220,7 @@ scd feature-auth  # Actually changes directory
 **Changes Required**:
 
 1. **New command** (`src/cli/commands/cd.rs`):
+
 ```rust
 pub fn execute(branch: &str) -> Result<()> {
     let session = sessions::get_by_branch(branch)?;
@@ -223,6 +230,7 @@ pub fn execute(branch: &str) -> Result<()> {
 ```
 
 2. **CLI registration** (`src/cli/app.rs`):
+
 ```rust
 /// Print worktree path for a shard (for shell integration)
 Cd {
@@ -232,6 +240,7 @@ Cd {
 ```
 
 **Validation**:
+
 ```bash
 shards cd feature-auth
 # Prints: /path/to/worktree
@@ -241,6 +250,7 @@ cd "$(shards cd feature-auth)"
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add command
 - `src/cli/commands/mod.rs` - Add module
 - `src/cli/commands/cd.rs` - New file
@@ -251,9 +261,10 @@ cd "$(shards cd feature-auth)"
 
 **What**: Open shard's worktree in the user's editor.
 
-**Why `code` not `open`**: `shards open` is the lifecycle command for launching agent terminals (Phase 6). `shards code` is memorable (VS Code is the default) and unambiguous.
+**Why `code` not `open`**: `shards open` is the lifecycle command for launching agent terminals (Phase 6). `shards code` is memorable (the users default editor is the default) and unambiguous.
 
 **Usage**:
+
 ```bash
 shards code feature-auth           # Uses $EDITOR or defaults to 'code'
 shards code feature-auth --editor vim
@@ -262,6 +273,7 @@ shards code feature-auth --editor vim
 **Changes Required**:
 
 1. **New command** (`src/cli/commands/code.rs`):
+
 ```rust
 pub fn execute(branch: &str, editor: Option<&str>) -> Result<()> {
     let session = sessions::get_by_branch(branch)?;
@@ -279,6 +291,7 @@ pub fn execute(branch: &str, editor: Option<&str>) -> Result<()> {
 ```
 
 2. **CLI registration**:
+
 ```rust
 /// Open shard's worktree in editor
 Code {
@@ -292,6 +305,7 @@ Code {
 ```
 
 **Validation**:
+
 ```bash
 shards code feature-auth
 # VS Code opens with worktree
@@ -301,6 +315,7 @@ EDITOR=vim shards code feature-auth
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add command
 - `src/cli/commands/mod.rs` - Add module
 - `src/cli/commands/code.rs` - New file
@@ -312,6 +327,7 @@ EDITOR=vim shards code feature-auth
 **What**: Machine-readable output for list and status commands.
 
 **Usage**:
+
 ```bash
 shards list --json
 # [{"branch": "feature-auth", "agent": "claude", "status": "Active", ...}]
@@ -326,6 +342,7 @@ shards list --json | jq '.[] | select(.status == "Active") | .branch'
 **Changes Required**:
 
 1. **List command** (`src/cli/commands/list.rs`):
+
 ```rust
 #[arg(long, help = "Output as JSON")]
 json: bool,
@@ -339,6 +356,7 @@ if args.json {
 ```
 
 2. **Status command** (`src/cli/commands/status.rs`):
+
 ```rust
 #[arg(long, help = "Output as JSON")]
 json: bool,
@@ -352,12 +370,14 @@ if args.json {
 ```
 
 **Validation**:
+
 ```bash
 shards list --json | jq '.[0].branch'
 # "feature-auth"
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add flag to List and Status
 - `src/cli/commands/list.rs` - Handle json flag
 - `src/cli/commands/status.rs` - Handle json flag
@@ -369,6 +389,7 @@ shards list --json | jq '.[0].branch'
 **What**: Suppress log output, show only essential information.
 
 **Usage**:
+
 ```bash
 shards create feature-auth          # Shows logs
 shards -q create feature-auth       # Clean output, just success/failure
@@ -380,6 +401,7 @@ BRANCH=$(shards -q create feature-auth)
 **Changes Required**:
 
 1. **Global flag** (`src/cli/app.rs`):
+
 ```rust
 #[derive(Parser)]
 struct Cli {
@@ -392,6 +414,7 @@ struct Cli {
 ```
 
 2. **Log initialization** (`src/main.rs` or logging setup):
+
 ```rust
 if cli.quiet {
     // Set log level to error only, or disable tracing subscriber
@@ -400,6 +423,7 @@ if cli.quiet {
 ```
 
 **Validation**:
+
 ```bash
 shards create feature-auth 2>&1 | wc -l
 # Many lines (logs)
@@ -409,6 +433,7 @@ shards -q create feature-auth 2>&1 | wc -l
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add global flag
 - `src/main.rs` - Check flag before log init
 
@@ -421,6 +446,7 @@ shards -q create feature-auth 2>&1 | wc -l
 **What**: Bypass git safety checks for destroy command.
 
 **Usage**:
+
 ```bash
 shards destroy feature-auth
 # Git blocks if uncommitted changes
@@ -446,6 +472,7 @@ shards destroy --force feature-auth
 **What**: Bring a shard's terminal window to foreground.
 
 **Usage**:
+
 ```bash
 shards focus feature-auth
 # Terminal window with feature-auth comes to front
@@ -456,6 +483,7 @@ shards focus feature-auth
 **Changes Required**:
 
 1. **New command** (`src/cli/commands/focus.rs`):
+
 ```rust
 pub fn execute(branch: &str) -> Result<()> {
     let session = sessions::get_by_branch(branch)?;
@@ -469,6 +497,7 @@ pub fn execute(branch: &str) -> Result<()> {
 ```
 
 2. **Terminal module** (`src/terminal/operations.rs`):
+
 ```rust
 pub fn focus_window(terminal_type: &TerminalType, window_id: &str) -> Result<()> {
     match terminal_type {
@@ -480,6 +509,7 @@ pub fn focus_window(terminal_type: &TerminalType, window_id: &str) -> Result<()>
 ```
 
 **Validation**:
+
 ```bash
 # With multiple terminal windows open
 shards focus feature-auth
@@ -487,6 +517,7 @@ shards focus feature-auth
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add command
 - `src/cli/commands/focus.rs` - New file
 - `src/terminal/operations.rs` - Add focus function
@@ -500,6 +531,7 @@ shards focus feature-auth
 **What**: Show git diff for a shard without entering the worktree.
 
 **Usage**:
+
 ```bash
 shards diff feature-auth
 # Shows: git diff output for that worktree
@@ -511,6 +543,7 @@ shards diff feature-auth --staged
 **Changes Required**:
 
 1. **New command** (`src/cli/commands/diff.rs`):
+
 ```rust
 pub fn execute(branch: &str, staged: bool) -> Result<()> {
     let session = sessions::get_by_branch(branch)?;
@@ -531,6 +564,7 @@ pub fn execute(branch: &str, staged: bool) -> Result<()> {
 ```
 
 **Validation**:
+
 ```bash
 shards diff feature-auth
 # Shows uncommitted changes
@@ -540,6 +574,7 @@ shards diff feature-auth --staged
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add command
 - `src/cli/commands/diff.rs` - New file
 
@@ -550,6 +585,7 @@ shards diff feature-auth --staged
 **What**: Show recent commits made in a shard.
 
 **Usage**:
+
 ```bash
 shards commits feature-auth
 # Shows: recent commits in that branch
@@ -561,6 +597,7 @@ shards commits feature-auth --count 5
 **Changes Required**:
 
 1. **New command** (`src/cli/commands/commits.rs`):
+
 ```rust
 pub fn execute(branch: &str, count: usize) -> Result<()> {
     let session = sessions::get_by_branch(branch)?;
@@ -577,6 +614,7 @@ pub fn execute(branch: &str, count: usize) -> Result<()> {
 ```
 
 **Validation**:
+
 ```bash
 shards commits feature-auth
 # Shows recent commits
@@ -586,6 +624,7 @@ shards commits feature-auth --count 3
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add command
 - `src/cli/commands/commits.rs` - New file
 
@@ -596,6 +635,7 @@ shards commits feature-auth --count 3
 **What**: Destroy all shards for current project.
 
 **Usage**:
+
 ```bash
 shards destroy --all
 # Prompt: "Destroy ALL 5 shards? [y/N]"
@@ -607,6 +647,7 @@ shards destroy --all --force
 **Changes Required**:
 
 1. **Destroy command** modification:
+
 ```rust
 #[arg(long, help = "Destroy all shards")]
 all: bool,
@@ -629,6 +670,7 @@ if args.all {
 ```
 
 **Validation**:
+
 ```bash
 shards list
 # Shows 3 shards
@@ -639,6 +681,7 @@ shards list
 ```
 
 **Files to modify**:
+
 - `src/cli/app.rs` - Add --all flag to Destroy
 - `src/cli/commands/destroy.rs` - Handle --all
 
@@ -651,6 +694,7 @@ shards list
 **Why this is valuable**: Orchestrating agents often requires launching multiple shards or cleaning up after a work session. Without `--all`, users must run individual commands for each shard.
 
 **Usage**:
+
 ```bash
 # Open agents in all stopped shards
 shards open --all
@@ -668,13 +712,14 @@ shards stop --all
 
 **Behavior**:
 
-| Command | Targets | Action |
-|---------|---------|--------|
-| `shards open --all` | Shards with status=Stopped | Launch agent terminal |
-| `shards open --all --agent X` | Shards with status=Stopped | Launch agent X in each |
-| `shards stop --all` | Shards with status=Active | Kill process, set status=Stopped |
+| Command                       | Targets                    | Action                           |
+| ----------------------------- | -------------------------- | -------------------------------- |
+| `shards open --all`           | Shards with status=Stopped | Launch agent terminal            |
+| `shards open --all --agent X` | Shards with status=Stopped | Launch agent X in each           |
+| `shards stop --all`           | Shards with status=Active  | Kill process, set status=Stopped |
 
 **Output**:
+
 ```bash
 shards open --all
 # ✅ Opened 3 shards:
@@ -690,6 +735,7 @@ shards stop --all
 ```
 
 **Edge cases**:
+
 - `open --all` with no stopped shards: "No stopped shards to open."
 - `stop --all` with no running shards: "No running shards to stop."
 - Partial failures: Continue with remaining shards, report errors at end
@@ -697,6 +743,7 @@ shards stop --all
 **Changes Required**:
 
 1. **CLI arguments** (`crates/shards/src/app.rs`):
+
 ```rust
 // For open command
 .arg(
@@ -718,6 +765,7 @@ shards stop --all
 ```
 
 2. **Command handlers** (`crates/shards/src/commands.rs`):
+
 ```rust
 fn handle_open_command(matches: &ArgMatches) -> Result<()> {
     if matches.get_flag("all") {
@@ -764,6 +812,7 @@ fn handle_open_all(agent_override: Option<String>) -> Result<()> {
 ```
 
 **Validation**:
+
 ```bash
 # Setup
 shards create test1
@@ -789,6 +838,7 @@ shards stop --all
 **Note**: `restart` is deprecated. Use `stop --all` then `open --all` for similar behavior.
 
 **Files to modify**:
+
 - `crates/shards/src/app.rs` - Add --all flag to Open and Stop
 - `crates/shards/src/commands.rs` - Add handle_open_all, handle_stop_all
 
@@ -799,6 +849,7 @@ shards stop --all
 **What**: Match partial branch names when unambiguous.
 
 **Usage**:
+
 ```bash
 shards list
 # feature-auth, feature-api, bugfix-login
@@ -813,6 +864,7 @@ shards status feature
 **Changes Required**:
 
 1. **Session lookup** (`src/sessions/mod.rs`):
+
 ```rust
 pub fn get_by_branch_fuzzy(query: &str) -> Result<Session> {
     let sessions = list_for_project()?;
@@ -842,6 +894,7 @@ pub fn get_by_branch_fuzzy(query: &str) -> Result<Session> {
 2. **Update all commands** to use fuzzy lookup.
 
 **Validation**:
+
 ```bash
 shards status auth
 # Works for feature-auth
@@ -851,6 +904,7 @@ shards status feature
 ```
 
 **Files to modify**:
+
 - `src/sessions/mod.rs` - Add fuzzy lookup function
 - All command files - Use fuzzy lookup
 
@@ -941,25 +995,25 @@ shards status auth  # Should work
 
 ### Phase 1 Files
 
-| File | Change | Status |
-|------|--------|--------|
-| `crates/shards-core/src/sessions/types.rs` | Add `note: Option<String>` | TODO |
-| `crates/shards/src/app.rs` | Add commands and flags | TODO |
-| `crates/shards/src/commands.rs` | Add cd, code commands | TODO |
-| `crates/shards/src/commands.rs` | Add --json to list/status | TODO |
-| `crates/shards/src/main.rs` | Handle --quiet | TODO |
-| `crates/shards/src/commands.rs` | --force on destroy | ✅ DONE |
+| File                                       | Change                     | Status  |
+| ------------------------------------------ | -------------------------- | ------- |
+| `crates/shards-core/src/sessions/types.rs` | Add `note: Option<String>` | TODO    |
+| `crates/shards/src/app.rs`                 | Add commands and flags     | TODO    |
+| `crates/shards/src/commands.rs`            | Add cd, code commands      | TODO    |
+| `crates/shards/src/commands.rs`            | Add --json to list/status  | TODO    |
+| `crates/shards/src/main.rs`                | Handle --quiet             | TODO    |
+| `crates/shards/src/commands.rs`            | --force on destroy         | ✅ DONE |
 
 **Note**: File paths updated to reflect workspace structure (`crates/shards/`, `crates/shards-core/`).
 
 ### Phase 2 Files
 
-| File | Change |
-|------|--------|
-| `crates/shards/src/commands.rs` | Add focus, diff, commits commands |
-| `crates/shards-core/src/terminal/operations.rs` | Add focus_window |
-| `crates/shards-core/src/sessions/operations.rs` | Add fuzzy lookup |
-| `crates/shards/src/commands.rs` | Add --all to open, stop, destroy |
+| File                                            | Change                            |
+| ----------------------------------------------- | --------------------------------- |
+| `crates/shards/src/commands.rs`                 | Add focus, diff, commits commands |
+| `crates/shards-core/src/terminal/operations.rs` | Add focus_window                  |
+| `crates/shards-core/src/sessions/operations.rs` | Add fuzzy lookup                  |
+| `crates/shards/src/commands.rs`                 | Add --all to open, stop, destroy  |
 
 **Note**: File paths updated to reflect workspace structure.
 
@@ -968,6 +1022,7 @@ shards status auth  # Should work
 ## Dependencies
 
 No new crates needed. Uses existing:
+
 - `clap` for CLI parsing
 - `serde` / `serde_json` for JSON output
 - `std::process::Command` for git operations
@@ -976,19 +1031,19 @@ No new crates needed. Uses existing:
 
 ## Decisions Log
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| `shards cd` prints path | Can't change parent shell | Standard Unix pattern |
-| `--force` before branch | Consistent with rm -f | Familiar to users |
-| Fuzzy matching | Contains match | Simple, predictable |
-| No tags (yet) | Notes are enough | YAGNI |
-| No templates (yet) | Tier 3, needs design | Keep scope focused |
-| `shards code` not `open` | `open` is lifecycle command | Avoid conflict with Phase 6 |
-| Bulk `open/stop` not `restart` | `restart` deprecated | Cleaner lifecycle semantics |
+| Decision                       | Choice                      | Rationale                   |
+| ------------------------------ | --------------------------- | --------------------------- |
+| `shards cd` prints path        | Can't change parent shell   | Standard Unix pattern       |
+| `--force` before branch        | Consistent with rm -f       | Familiar to users           |
+| Fuzzy matching                 | Contains match              | Simple, predictable         |
+| No tags (yet)                  | Notes are enough            | YAGNI                       |
+| No templates (yet)             | Tier 3, needs design        | Keep scope focused          |
+| `shards code` not `open`       | `open` is lifecycle command | Avoid conflict with Phase 6 |
+| Bulk `open/stop` not `restart` | `restart` deprecated        | Cleaner lifecycle semantics |
 
 ---
 
-*Status: READY FOR IMPLEMENTATION*
-*Priority: Phase 1 first, each feature is a small PR*
-*Created: 2026-01-22*
-*Updated: 2026-01-24 - Resolved conflicts with GUI Phase 6 lifecycle*
+_Status: READY FOR IMPLEMENTATION_
+_Priority: Phase 1 first, each feature is a small PR_
+_Created: 2026-01-22_
+_Updated: 2026-01-24 - Resolved conflicts with GUI Phase 6 lifecycle_
