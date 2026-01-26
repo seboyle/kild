@@ -452,4 +452,110 @@ mod tests {
             "Unknown status should not be treated as Running"
         );
     }
+
+    // --- Editor Selection Tests ---
+
+    use std::sync::Mutex;
+
+    // Mutex to ensure editor selection tests don't interfere with each other
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Helper to restore environment variable after test
+    fn restore_env_var(key: &str, original: Option<String>) {
+        // SAFETY: We hold ENV_LOCK to prevent concurrent access to env vars
+        unsafe {
+            match original {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+
+    #[test]
+    fn test_select_editor_uses_env_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let original = std::env::var("EDITOR").ok();
+
+        // SAFETY: We hold ENV_LOCK to prevent concurrent access to env vars
+        unsafe {
+            std::env::set_var("EDITOR", "nvim");
+        }
+        let editor = super::select_editor();
+        assert_eq!(editor, "nvim");
+
+        restore_env_var("EDITOR", original);
+    }
+
+    #[test]
+    fn test_select_editor_defaults_to_zed() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let original = std::env::var("EDITOR").ok();
+
+        // SAFETY: We hold ENV_LOCK to prevent concurrent access to env vars
+        unsafe {
+            std::env::remove_var("EDITOR");
+        }
+        let editor = super::select_editor();
+        assert_eq!(editor, "zed");
+
+        restore_env_var("EDITOR", original);
+    }
+}
+
+/// Open a worktree path in the user's preferred editor.
+///
+/// Editor selection priority (GUI context - no CLI flag available):
+/// 1. $EDITOR environment variable
+/// 2. Default: "zed"
+///
+/// Note: The CLI `code` command also supports an `--editor` flag that takes
+/// highest precedence, but this is unavailable in the GUI context.
+///
+/// Returns `Ok(())` on successful spawn, or an error message if the editor
+/// failed to launch (e.g., editor not found, permission denied).
+pub fn open_in_editor(worktree_path: &std::path::Path) -> Result<(), String> {
+    let editor = select_editor();
+
+    tracing::info!(
+        event = "ui.open_in_editor.started",
+        path = %worktree_path.display(),
+        editor = %editor
+    );
+
+    match std::process::Command::new(&editor)
+        .arg(worktree_path)
+        .spawn()
+    {
+        Ok(_) => {
+            tracing::info!(
+                event = "ui.open_in_editor.completed",
+                path = %worktree_path.display(),
+                editor = %editor
+            );
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(
+                event = "ui.open_in_editor.failed",
+                path = %worktree_path.display(),
+                editor = %editor,
+                error = %e
+            );
+            Err(format!(
+                "Failed to open editor '{}': {}. Check that $EDITOR is set correctly or 'zed' is installed.",
+                editor, e
+            ))
+        }
+    }
+}
+
+/// Determine which editor to use based on environment.
+///
+/// Priority:
+/// 1. $EDITOR environment variable
+/// 2. Default: "zed"
+fn select_editor() -> String {
+    std::env::var("EDITOR").unwrap_or_else(|_| "zed".to_string())
 }

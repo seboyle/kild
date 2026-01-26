@@ -250,6 +250,109 @@ impl MainView {
         cx.notify();
     }
 
+    /// Handle click on the Copy Path button in a shard row.
+    ///
+    /// Copies the worktree path to the system clipboard.
+    pub fn on_copy_path_click(&mut self, worktree_path: &std::path::Path, cx: &mut Context<Self>) {
+        tracing::info!(
+            event = "ui.copy_path_clicked",
+            path = %worktree_path.display()
+        );
+        let path_str = worktree_path.display().to_string();
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(path_str));
+        cx.notify();
+    }
+
+    /// Handle click on the Open Editor button in a shard row.
+    ///
+    /// Opens the worktree in the user's preferred editor ($EDITOR or zed).
+    /// Surfaces any errors inline in the shard row.
+    pub fn on_open_editor_click(
+        &mut self,
+        worktree_path: &std::path::Path,
+        branch: &str,
+        cx: &mut Context<Self>,
+    ) {
+        tracing::info!(
+            event = "ui.open_editor_clicked",
+            path = %worktree_path.display()
+        );
+        self.state.clear_editor_error();
+
+        if let Err(e) = actions::open_in_editor(worktree_path) {
+            tracing::warn!(
+                event = "ui.open_editor_click.error_displayed",
+                branch = branch,
+                error = %e
+            );
+            self.state.editor_error = Some(crate::state::OperationError {
+                branch: branch.to_string(),
+                message: e,
+            });
+        }
+        cx.notify();
+    }
+
+    /// Handle click on the Focus Terminal button in a shard row.
+    ///
+    /// Requires both `terminal_type` and `window_id` to be present. If either is
+    /// missing (e.g., session started before window tracking was implemented),
+    /// surfaces an error to the user explaining the limitation.
+    ///
+    /// Also surfaces any errors from the underlying `focus_terminal` operation.
+    pub fn on_focus_terminal_click(
+        &mut self,
+        terminal_type: Option<&shards_core::terminal::types::TerminalType>,
+        window_id: Option<&str>,
+        branch: &str,
+        cx: &mut Context<Self>,
+    ) {
+        tracing::info!(
+            event = "ui.focus_terminal_clicked",
+            branch = branch,
+            terminal_type = ?terminal_type,
+            window_id = ?window_id
+        );
+        self.state.clear_focus_error();
+
+        let result = if let (Some(tt), Some(wid)) = (terminal_type, window_id) {
+            shards_core::terminal_ops::focus_terminal(tt, wid)
+                .map_err(|e| format!("Failed to focus terminal: {}", e))
+        } else if terminal_type.is_none() && window_id.is_none() {
+            tracing::debug!(
+                event = "ui.focus_terminal_no_window_info",
+                branch = branch,
+                message = "Legacy session - no terminal info recorded"
+            );
+            Err("Terminal window info not available. This session was created before window tracking was added.".to_string())
+        } else {
+            tracing::warn!(
+                event = "ui.focus_terminal_inconsistent_state",
+                branch = branch,
+                has_terminal_type = terminal_type.is_some(),
+                has_window_id = window_id.is_some(),
+                message = "Inconsistent terminal state - one field present, one missing"
+            );
+            Err(
+                "Terminal window info is incomplete. Try stopping and reopening the shard."
+                    .to_string(),
+            )
+        };
+
+        if let Err(e) = result {
+            tracing::warn!(
+                event = "ui.focus_terminal_click.error_displayed",
+                branch = branch,
+                error = %e
+            );
+            self.state.focus_error = Some(crate::state::OperationError {
+                branch: branch.to_string(),
+                message: e,
+            });
+        }
+        cx.notify();
+    }
+
     /// Clear bulk operation errors (called when user dismisses the banner).
     fn on_dismiss_bulk_errors(&mut self, cx: &mut Context<Self>) {
         tracing::info!(event = "ui.bulk_errors.dismissed");
