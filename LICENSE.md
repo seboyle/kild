@@ -10,7 +10,7 @@
 
 ## Trademark Policy
 
-The following are trademarks of Rasmus Widing and are not covered by the Apache 2.0 license:
+The following are trademarks of Widinglabs OÜ and are not covered by the Apache 2.0 license:
 
 - The name "KILD"
 - The KILD logo and visual identity
@@ -222,7 +222,7 @@ If you're unsure whether your use of the KILD brand is permitted, please reach o
 
 ## Copyright
 
-Copyright 2025-present Rasmus Widing
+Copyright 2025-present Widinglabs OÜ
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
