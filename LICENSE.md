@@ -222,7 +222,7 @@ If you're unsure whether your use of the KILD brand is permitted, please reach o
 
 ## Copyright
 
-Copyright 2025-present Widinglabs OÜ
+Copyright 2026-present Widinglabs OÜ
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
