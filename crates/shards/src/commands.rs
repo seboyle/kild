@@ -227,10 +227,16 @@ fn handle_cd_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Err
 }
 
 fn handle_destroy_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+    let force = matches.get_flag("force");
+
+    if matches.get_flag("all") {
+        return handle_destroy_all(force);
+    }
+
+    // Single branch operation
     let branch = matches
         .get_one::<String>("branch")
-        .ok_or("Branch argument is required")?;
-    let force = matches.get_flag("force");
+        .ok_or("Branch argument is required (or use --all)")?;
 
     info!(
         event = "cli.destroy_started",
@@ -259,6 +265,109 @@ fn handle_destroy_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error
             Err(e.into())
         }
     }
+}
+
+/// Check if user confirmation input indicates acceptance.
+/// Accepts "y" or "yes" (case-insensitive).
+fn is_confirmation_accepted(input: &str) -> bool {
+    let normalized = input.trim().to_lowercase();
+    normalized == "y" || normalized == "yes"
+}
+
+/// Format partial failure error message for bulk operations.
+fn format_partial_failure_error(operation: &str, failed: usize, total: usize) -> String {
+    format!(
+        "Partial failure: {} of {} shard(s) failed to {}",
+        failed, total, operation
+    )
+}
+
+/// Handle `shards destroy --all` - destroy all shards for current project
+fn handle_destroy_all(force: bool) -> Result<(), Box<dyn std::error::Error>> {
+    info!(event = "cli.destroy_all_started", force = force);
+
+    let sessions = session_handler::list_sessions()?;
+
+    if sessions.is_empty() {
+        println!("No shards to destroy.");
+        info!(
+            event = "cli.destroy_all_completed",
+            destroyed = 0,
+            failed = 0
+        );
+        return Ok(());
+    }
+
+    // Confirmation prompt unless --force is specified
+    if !force {
+        use std::io::{self, Write};
+
+        print!(
+            "Destroy ALL {} shard(s)? This cannot be undone. [y/N] ",
+            sessions.len()
+        );
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        if !is_confirmation_accepted(&input) {
+            println!("Aborted.");
+            info!(event = "cli.destroy_all_aborted");
+            return Ok(());
+        }
+    }
+
+    let mut destroyed: Vec<String> = Vec::new();
+    let mut errors: Vec<FailedOperation> = Vec::new();
+
+    for session in sessions {
+        match session_handler::destroy_session(&session.branch, force) {
+            Ok(()) => {
+                info!(event = "cli.destroy_completed", branch = session.branch);
+                destroyed.push(session.branch);
+            }
+            Err(e) => {
+                error!(
+                    event = "cli.destroy_failed",
+                    branch = session.branch,
+                    error = %e
+                );
+                events::log_app_error(&e);
+                errors.push((session.branch, e.to_string()));
+            }
+        }
+    }
+
+    // Report successes
+    if !destroyed.is_empty() {
+        println!("Destroyed {} shard(s):", destroyed.len());
+        for branch in &destroyed {
+            println!("   {}", branch);
+        }
+    }
+
+    // Report failures
+    if !errors.is_empty() {
+        eprintln!("Failed to destroy {} shard(s):", errors.len());
+        for (branch, err) in &errors {
+            eprintln!("   {}: {}", branch, err);
+        }
+    }
+
+    info!(
+        event = "cli.destroy_all_completed",
+        destroyed = destroyed.len(),
+        failed = errors.len()
+    );
+
+    // Return error if any failures (for exit code)
+    if !errors.is_empty() {
+        let total_count = destroyed.len() + errors.len();
+        return Err(format_partial_failure_error("destroy", errors.len(), total_count).into());
+    }
+
+    Ok(())
 }
 
 fn handle_restart_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
@@ -1416,5 +1525,73 @@ mod tests {
         // 255 is valid
         let max_name = "a".repeat(255);
         assert!(is_valid_branch_name(&max_name));
+    }
+
+    // Tests for destroy --all helper functions
+
+    #[test]
+    fn test_is_confirmation_accepted_yes() {
+        assert!(is_confirmation_accepted("y"));
+        assert!(is_confirmation_accepted("Y"));
+        assert!(is_confirmation_accepted("yes"));
+        assert!(is_confirmation_accepted("YES"));
+        assert!(is_confirmation_accepted("Yes"));
+        assert!(is_confirmation_accepted("yEs"));
+    }
+
+    #[test]
+    fn test_is_confirmation_accepted_no() {
+        assert!(!is_confirmation_accepted("n"));
+        assert!(!is_confirmation_accepted("N"));
+        assert!(!is_confirmation_accepted("no"));
+        assert!(!is_confirmation_accepted("NO"));
+        assert!(!is_confirmation_accepted(""));
+        assert!(!is_confirmation_accepted("yess"));
+        assert!(!is_confirmation_accepted("yeah"));
+        assert!(!is_confirmation_accepted("nope"));
+    }
+
+    #[test]
+    fn test_is_confirmation_accepted_with_whitespace() {
+        assert!(is_confirmation_accepted("  y  "));
+        assert!(is_confirmation_accepted("\ty\n"));
+        assert!(is_confirmation_accepted("  yes  "));
+        assert!(is_confirmation_accepted("\n\nyes\n"));
+        assert!(!is_confirmation_accepted("  n  "));
+        assert!(!is_confirmation_accepted("  "));
+    }
+
+    #[test]
+    fn test_format_partial_failure_error_destroy() {
+        let error = format_partial_failure_error("destroy", 2, 5);
+        assert_eq!(error, "Partial failure: 2 of 5 shard(s) failed to destroy");
+    }
+
+    #[test]
+    fn test_format_partial_failure_error_all_failed() {
+        let error = format_partial_failure_error("destroy", 3, 3);
+        assert_eq!(error, "Partial failure: 3 of 3 shard(s) failed to destroy");
+    }
+
+    #[test]
+    fn test_format_partial_failure_error_one_failed() {
+        let error = format_partial_failure_error("destroy", 1, 10);
+        assert_eq!(error, "Partial failure: 1 of 10 shard(s) failed to destroy");
+    }
+
+    #[test]
+    fn test_format_partial_failure_error_other_operations() {
+        // Verify the helper works for other operations too
+        let stop_error = format_partial_failure_error("stop", 1, 3);
+        assert_eq!(
+            stop_error,
+            "Partial failure: 1 of 3 shard(s) failed to stop"
+        );
+
+        let open_error = format_partial_failure_error("open", 2, 4);
+        assert_eq!(
+            open_error,
+            "Partial failure: 2 of 4 shard(s) failed to open"
+        );
     }
 }
