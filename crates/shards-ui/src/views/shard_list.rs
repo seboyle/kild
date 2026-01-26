@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use gpui::{Context, IntoElement, div, prelude::*, rgb, uniform_list};
 
-use crate::state::{AppState, ProcessStatus};
+use crate::state::{AppState, GitStatus, ProcessStatus};
 use crate::views::MainView;
 
 /// Format RFC3339 timestamp as relative time (e.g., "5m ago", "2h ago").
@@ -107,10 +107,12 @@ pub fn render_shard_list(state: &AppState, cx: &mut Context<MainView>) -> impl I
                             // Show Open button when stopped, Stop button when running
                             let is_running = display.status == ProcessStatus::Running;
 
-                            // Clone branch for button closures
+                            // Clone data for use in closures
                             let branch_for_open = branch.clone();
                             let branch_for_stop = branch.clone();
                             let branch_for_destroy = branch.clone();
+                            let git_status = display.git_status;
+                            let note = display.session.note.clone();
 
                             div()
                                 .id(ix)
@@ -126,6 +128,13 @@ pub fn render_shard_list(state: &AppState, cx: &mut Context<MainView>) -> impl I
                                         .items_center()
                                         .gap_3()
                                         .child(div().text_color(status_color).child("●"))
+                                        // Git status indicator (orange dot when dirty, gray when unknown)
+                                        .when(git_status == GitStatus::Dirty, |row| {
+                                            row.child(div().text_color(rgb(0xffa500)).child("●"))
+                                        })
+                                        .when(git_status == GitStatus::Unknown, |row| {
+                                            row.child(div().text_color(rgb(0x666666)).child("?"))
+                                        })
                                         .child(
                                             div()
                                                 .flex_1()
@@ -158,6 +167,23 @@ pub fn render_shard_list(state: &AppState, cx: &mut Context<MainView>) -> impl I
                                                 )
                                             },
                                         )
+                                        // Note column (truncated to 25 chars)
+                                        .when_some(note, |row, note_text| {
+                                            let truncated = if note_text.chars().count() > 25 {
+                                                format!(
+                                                    "{}...",
+                                                    note_text.chars().take(25).collect::<String>()
+                                                )
+                                            } else {
+                                                note_text
+                                            };
+                                            row.child(
+                                                div()
+                                                    .text_color(rgb(0x888888))
+                                                    .text_sm()
+                                                    .child(truncated),
+                                            )
+                                        })
                                         // Open button [▶] - shown when NOT running
                                         .when(!is_running, |row| {
                                             row.child(
