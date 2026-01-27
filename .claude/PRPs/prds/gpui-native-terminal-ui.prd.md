@@ -158,7 +158,13 @@ Build a native GPUI application as a **visual dashboard** for shard management. 
 | 7.6 | Bulk Operations | Open All / Stop All buttons | Bulk lifecycle operations | ✅ DONE |
 | 7.7 | Quick Actions | Per-row action buttons | Copy Path, Open Editor, Focus Terminal | ✅ DONE |
 | 8 | Projects | Project management, active project context | Switch projects, filter shards | ✅ DONE |
-| 9 | Theme & Components | Color palette + reusable UI components | Polished design, extracted TextInput/Button/Modal | TODO |
+| 9 | Theme & Components | Color palette + reusable UI components | Polished design, extracted components | TODO |
+| 9.1 | Theme Foundation | Color palette, typography, spacing | Theme constants accessible | TODO |
+| 9.2 | Button Component | All button variants | Reusable Button component | TODO |
+| 9.3 | StatusIndicator Component | Status dots and badges | Reusable StatusIndicator | TODO |
+| 9.4 | TextInput Component | Form input with focus states | Reusable TextInput | TODO |
+| 9.5 | Modal Component | Dialog structure | Reusable Modal | TODO |
+| 9.6 | Theme Integration | Apply theme to all views | Visual match to mockup | TODO |
 | 10 | Keyboard Shortcuts | Full keyboard control | Navigate and operate UI without mouse | TODO |
 
 ### Dependency Graph
@@ -166,14 +172,21 @@ Build a native GPUI application as a **visual dashboard** for shard management. 
 ```
 GUI Phases:
 Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 → 7.5 → 7.6 → 7.7 → 8 → 9 → 10
-  ✅     ✅   ✅   ✅   ✅   ✅   │     │      │      │    │    │    │
-                                │     │      │      │    │    │    └─ Keyboard control
-                                │     │      │      │    │    └─ Theme polish
-                                │     │      │      │    └─ Projects (active project context)
-                                │     │      │      └─ Quick actions (copy, edit, focus)
-                                │     │      └─ Bulk ops (open/stop all)
-                                │     └─ Notes & git status
-                                └─ Auto-refresh, status indicators
+  ✅     ✅   ✅   ✅   ✅   ✅   ✅    ✅     ✅     ✅    ✅   │    │
+                                                              │    └─ Keyboard control
+                                                              │
+                                                              └─ Theme & Components
+                                                                   │
+Phase 9 Internal Dependencies:                                     │
+                                                                   ▼
+  9.1 Theme Foundation ─┬─► 9.2 Button ─────────┐
+                        │                       │
+                        ├─► 9.3 StatusIndicator ├──► 9.6 Theme Integration
+                        │                       │
+                        ├─► 9.4 TextInput ──────┤
+                        │                       │
+                        └─► 9.5 Modal ──────────┘
+                            (uses Button)
 
 Cross-PRD Dependencies (CLI → GUI):
 ┌─────────────────────────────────────────────────────────────┐
@@ -1081,66 +1094,519 @@ cargo run -p shards-ui
 
 **Why this phase exists**: After all functionality is complete, we polish the visual design and refactor the UI into reusable components. This phase transforms working-but-rough UI into a cohesive, maintainable design system aligned with the KILD brand.
 
-**Brand Reference**: See **[Brand System](../branding/brand-system.html)** for the complete visual design system including:
-- Color palette (Tallinn Night dark theme, Baltic Ice light theme)
-- Typography (Inter for UI, JetBrains Mono for code)
-- Button variants (primary, secondary, ghost, success, warning, danger)
-- Status indicators (active/stopped/crashed)
-- Form inputs with focus states
-- Keyboard shortcut styling
+**Brand Reference**: See **[Brand System](../branding/brand-system.html)** for the complete visual design system. Also see **[Dashboard Mockup](../branding/mockup-dashboard.html)** for the target UI design.
 
-Also see **[Dashboard Mockup](../branding/mockup-dashboard.html)** for the target UI design.
+**What NOT to do** (applies to all subphases):
+- Don't add light theme yet (dark only for MVP)
+- Don't add theme switching UI
+- Don't deviate from the brand system colors
+
+---
+
+#### Subphase Overview
+
+| # | Subphase | Focus | Status |
+|---|----------|-------|--------|
+| 9.1 | Theme Foundation | Color palette, typography, spacing constants | TODO |
+| 9.2 | Button Component | All button variants with proper styling | TODO |
+| 9.3 | StatusIndicator Component | Status dots and badges with glow effects | TODO |
+| 9.4 | TextInput Component | Form input with focus states | TODO |
+| 9.5 | Modal Component | Reusable dialog structure | TODO |
+| 9.6 | Theme Integration | Apply theme to all views, final polish | TODO |
+
+#### Dependency Graph
+
+```
+9.1 Theme Foundation
+ │
+ ├──► 9.2 Button ─────────┐
+ │                        │
+ ├──► 9.3 StatusIndicator │
+ │                        ├──► 9.6 Theme Integration
+ ├──► 9.4 TextInput ──────┤
+ │                        │
+ └──► 9.5 Modal ──────────┘
+      (uses Button)
+```
+
+---
+
+#### 9.1 Theme Foundation
+
+**Status**: TODO
+
+**What**: Create the theme module with all color, typography, and spacing constants from the brand system.
+
+**Why this subphase exists**: Everything else depends on having consistent theme constants. This is the foundation.
 
 **Files to Create**:
 | File | Purpose |
 |------|---------|
-| `src/ui/theme.rs` | Color constants from brand system, theme struct |
-| `src/ui/components/mod.rs` | Reusable component module |
-| `src/ui/components/text_input.rs` | Extracted, polished text input |
-| `src/ui/components/button.rs` | Styled button component |
-| `src/ui/components/modal.rs` | Reusable modal/dialog wrapper |
+| `crates/kild-ui/src/theme.rs` | All theme constants and Theme struct |
 
 **Files to Modify**:
 | File | Change |
 |------|--------|
-| `src/ui/views/*.rs` | Replace hardcoded colors with theme constants |
-| `src/ui/views/create_dialog.rs` | Use extracted components |
-| `src/ui/views/main_view.rs` | Use theme and components |
+| `crates/kild-ui/src/lib.rs` | Export theme module |
 
-**Color Palette** (from brand system - Tallinn Night):
+**Color Palette** (from mockup - Tallinn Night):
 
-| Name | Hex | Usage |
-|------|-----|-------|
-| Void | `#08090A` | Deepest background |
-| Obsidian | `#0E1012` | Sidebars, panels |
-| Surface | `#151719` | Cards, rows |
-| Elevated | `#1C1F22` | Modals, dropdowns |
-| Ice | `#38BDF8` | Primary actions |
-| Aurora | `#34D399` | Active/running status |
-| Copper | `#FBBF24` | Stopped/warning status |
-| Ember | `#F87171` | Error/crashed status |
-| Kiri | `#A78BFA` | Agent activity indicator |
+```rust
+// Base surfaces
+pub const VOID: u32 = 0x08090A;        // Deepest background
+pub const OBSIDIAN: u32 = 0x0E1012;    // Panels, sidebars
+pub const SURFACE: u32 = 0x151719;     // Cards, rows
+pub const ELEVATED: u32 = 0x1C1F22;    // Modals, dropdowns
 
-**Components to extract**:
-- `TextInput` - Keyboard-captured text field with cursor, placeholder, Ice focus ring
-- `Button` - Primary (Ice), secondary (Surface), ghost, success (Aurora), warning (Copper), danger (Ember)
-- `Modal` - Overlay + centered dialog box with title, content, actions
-- `StatusIndicator` - Dot with appropriate color and glow effect
+// Borders
+pub const BORDER_SUBTLE: u32 = 0x1F2328;
+pub const BORDER: u32 = 0x2D3139;
+pub const BORDER_STRONG: u32 = 0x3D434D;
+
+// Text
+pub const TEXT_MUTED: u32 = 0x5C6370;
+pub const TEXT_SUBTLE: u32 = 0x848D9C;
+pub const TEXT: u32 = 0xB8C0CC;
+pub const TEXT_BRIGHT: u32 = 0xE8ECF0;
+pub const TEXT_WHITE: u32 = 0xF8FAFC;
+
+// Accents
+pub const ICE: u32 = 0x38BDF8;         // Primary actions
+pub const ICE_DIM: u32 = 0x0EA5E9;
+pub const ICE_BRIGHT: u32 = 0x7DD3FC;
+
+pub const AURORA: u32 = 0x34D399;      // Active/running
+pub const AURORA_DIM: u32 = 0x10B981;
+
+pub const COPPER: u32 = 0xFBBF24;      // Stopped/warning
+pub const COPPER_DIM: u32 = 0xD97706;
+
+pub const EMBER: u32 = 0xF87171;       // Error/crashed
+
+pub const KIRI: u32 = 0xA78BFA;        // Agent activity
+```
+
+**Typography**:
+```rust
+pub const FONT_UI: &str = "Inter";
+pub const FONT_MONO: &str = "JetBrains Mono";
+
+pub const TEXT_XS: f32 = 11.0;
+pub const TEXT_SM: f32 = 12.0;
+pub const TEXT_BASE: f32 = 13.0;
+pub const TEXT_MD: f32 = 14.0;
+pub const TEXT_LG: f32 = 16.0;
+```
+
+**Spacing**:
+```rust
+pub const SPACE_1: f32 = 4.0;
+pub const SPACE_2: f32 = 8.0;
+pub const SPACE_3: f32 = 12.0;
+pub const SPACE_4: f32 = 16.0;
+pub const SPACE_5: f32 = 20.0;
+pub const SPACE_6: f32 = 24.0;
+
+pub const RADIUS_SM: f32 = 4.0;
+pub const RADIUS_MD: f32 = 6.0;
+pub const RADIUS_LG: f32 = 8.0;
+```
+
+**Theme struct**:
+```rust
+pub struct Theme {
+    // Provide helper methods for common operations
+    pub fn color(hex: u32) -> Hsla { /* convert hex to GPUI color */ }
+    pub fn glow(hex: u32, alpha: f32) -> Hsla { /* color with alpha for glow effects */ }
+}
+```
 
 **Validation**:
 ```bash
-cargo run -p shards-ui
-# Verify: Colors match brand-system.html
-# Verify: UI matches mockup-dashboard.html layout
-# Verify: Consistent styling across all views
-# Verify: Components work in create dialog
-# Verify: Theme applies to header, list, dialog, buttons
+cargo build -p kild-ui
+# Compiles without errors
+# Theme constants are accessible from other modules
 ```
 
-**What NOT to do**:
-- Don't add light theme yet (dark only for MVP)
-- Don't add theme switching UI
-- Don't deviate from the brand system colors
+---
+
+#### 9.2 Button Component
+
+**Status**: TODO
+
+**What**: Extract and polish the Button component with all variants from the mockup.
+
+**Why this subphase exists**: Buttons are used everywhere - header, dialogs, row actions. A consistent button component ensures visual coherence.
+
+**Files to Create**:
+| File | Purpose |
+|------|---------|
+| `crates/kild-ui/src/components/mod.rs` | Components module |
+| `crates/kild-ui/src/components/button.rs` | Button component |
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `crates/kild-ui/src/lib.rs` | Export components module |
+
+**Button Variants** (from mockup CSS):
+
+| Variant | Background | Text | Border | Hover |
+|---------|------------|------|--------|-------|
+| Primary | Ice | Void | - | Ice Bright |
+| Secondary | Surface | Text | Border | Elevated + Border Strong |
+| Ghost | Transparent | Text Subtle | - | Surface + Text |
+| Success | Aurora | Void | - | Aurora Dim |
+| Warning | Copper | Void | - | Copper Dim |
+| Danger | Transparent | Ember | Ember | Ember glow bg |
+
+**API Design**:
+```rust
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Ghost,
+    Success,
+    Warning,
+    Danger,
+}
+
+pub struct Button {
+    label: SharedString,
+    variant: ButtonVariant,
+    icon: Option<SharedString>,  // Optional leading icon
+    disabled: bool,
+    on_click: Option<Box<dyn Fn(&ClickEvent, &mut WindowContext)>>,
+}
+
+impl Button {
+    pub fn new(label: impl Into<SharedString>) -> Self;
+    pub fn variant(mut self, variant: ButtonVariant) -> Self;
+    pub fn icon(mut self, icon: impl Into<SharedString>) -> Self;
+    pub fn disabled(mut self, disabled: bool) -> Self;
+    pub fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut WindowContext) + 'static) -> Self;
+}
+```
+
+**Usage**:
+```rust
+Button::new("Create Kild")
+    .variant(ButtonVariant::Primary)
+    .icon("+")
+    .on_click(|_, cx| { /* handle click */ })
+
+Button::new("Stop All")
+    .variant(ButtonVariant::Warning)
+    .icon("⏹")
+
+Button::new("🗑")
+    .variant(ButtonVariant::Danger)
+    // Icon-only button
+```
+
+**Validation**:
+```bash
+cargo build -p kild-ui
+# Create a test view that renders all button variants
+# Verify: Each variant matches mockup colors
+# Verify: Hover states work
+# Verify: Disabled state shows reduced opacity
+```
+
+---
+
+#### 9.3 StatusIndicator Component
+
+**Status**: TODO
+
+**What**: Create StatusIndicator component for status dots and badges with glow effects.
+
+**Why this subphase exists**: Status indication is core to the dashboard - users need to see at a glance which kilds are active, stopped, or crashed.
+
+**Files to Create**:
+| File | Purpose |
+|------|---------|
+| `crates/kild-ui/src/components/status_indicator.rs` | StatusIndicator component |
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `crates/kild-ui/src/components/mod.rs` | Export StatusIndicator |
+
+**Status States** (from mockup):
+
+| Status | Color | Glow | Animation |
+|--------|-------|------|-----------|
+| Active | Aurora (`#34D399`) | Yes, 15% alpha | None |
+| Stopped | Copper (`#FBBF24`) | No | None |
+| Crashed | Ember (`#F87171`) | Yes, 15% alpha | Pulse (2s) |
+
+**API Design**:
+```rust
+pub enum Status {
+    Active,
+    Stopped,
+    Crashed,
+}
+
+pub struct StatusIndicator {
+    status: Status,
+    size: StatusSize,  // Dot (8px) or Badge (with text)
+}
+
+pub enum StatusSize {
+    Dot,      // Just the colored circle
+    Badge,    // Circle + "Active"/"Stopped"/"Crashed" text
+}
+
+impl StatusIndicator {
+    pub fn dot(status: Status) -> Self;
+    pub fn badge(status: Status) -> Self;
+}
+```
+
+**Rendering**:
+```rust
+// Dot: 8px circle with optional glow
+// Badge: Pill shape with dot + text, background at 15% alpha
+
+// Glow effect (for Active and Crashed):
+// box-shadow: 0 0 8px rgba(color, 0.15)
+// In GPUI: Use a slightly larger, blurred background element
+```
+
+**Validation**:
+```bash
+cargo build -p kild-ui
+# Render all status variants
+# Verify: Colors match mockup exactly
+# Verify: Active has subtle glow
+# Verify: Crashed pulses (opacity animation)
+# Verify: Badge shows correct text
+```
+
+---
+
+#### 9.4 TextInput Component
+
+**Status**: TODO
+
+**What**: Extract and polish the TextInput component with proper focus states and styling.
+
+**Why this subphase exists**: Text inputs are used in dialogs (create kild, add project). A polished input with proper focus states improves the feel significantly.
+
+**Files to Create**:
+| File | Purpose |
+|------|---------|
+| `crates/kild-ui/src/components/text_input.rs` | TextInput component |
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `crates/kild-ui/src/components/mod.rs` | Export TextInput |
+
+**Styling** (from mockup):
+
+| State | Background | Border | Shadow |
+|-------|------------|--------|--------|
+| Default | Obsidian | Border | None |
+| Focus | Obsidian | Ice | `0 0 0 3px` Ice at 15% alpha |
+| Disabled | Obsidian (50% opacity) | Border Subtle | None |
+
+**API Design**:
+```rust
+pub struct TextInput {
+    value: String,
+    placeholder: Option<SharedString>,
+    disabled: bool,
+    on_change: Option<Box<dyn Fn(&str, &mut WindowContext)>>,
+    on_submit: Option<Box<dyn Fn(&str, &mut WindowContext)>>,  // Enter key
+}
+
+impl TextInput {
+    pub fn new(value: impl Into<String>) -> Self;
+    pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self;
+    pub fn disabled(mut self, disabled: bool) -> Self;
+    pub fn on_change(mut self, handler: impl Fn(&str, &mut WindowContext) + 'static) -> Self;
+    pub fn on_submit(mut self, handler: impl Fn(&str, &mut WindowContext) + 'static) -> Self;
+}
+```
+
+**Focus Ring**:
+```rust
+// Ice focus ring: 3px spread, 15% alpha
+// In GPUI: Render a rounded rect behind the input when focused
+.when(self.focused, |this| {
+    this.border_color(theme::color(ICE))
+        .shadow(/* Ice glow */)
+})
+```
+
+**Validation**:
+```bash
+cargo build -p kild-ui
+# Render TextInput in a test view
+# Verify: Placeholder shows when empty
+# Verify: Focus ring appears on focus (Ice color)
+# Verify: Text is editable
+# Verify: on_submit fires on Enter
+```
+
+---
+
+#### 9.5 Modal Component
+
+**Status**: TODO
+
+**What**: Create a reusable Modal component for dialogs.
+
+**Why this subphase exists**: The create dialog (and future dialogs) need consistent modal styling - overlay, centered box, header/body/footer structure.
+
+**Files to Create**:
+| File | Purpose |
+|------|---------|
+| `crates/kild-ui/src/components/modal.rs` | Modal component |
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `crates/kild-ui/src/components/mod.rs` | Export Modal |
+
+**Structure** (from mockup):
+
+```
+┌─────────────────────────────────────────┐
+│ Overlay (Void at 80% opacity)           │
+│                                         │
+│   ┌─────────────────────────────────┐   │
+│   │ Modal (Elevated bg, Border)     │   │
+│   │                                 │   │
+│   │ ┌─────────────────────────────┐ │   │
+│   │ │ Header (title, border-bottom)│ │   │
+│   │ └─────────────────────────────┘ │   │
+│   │ ┌─────────────────────────────┐ │   │
+│   │ │ Body (content)              │ │   │
+│   │ └─────────────────────────────┘ │   │
+│   │ ┌─────────────────────────────┐ │   │
+│   │ │ Footer (actions, border-top)│ │   │
+│   │ └─────────────────────────────┘ │   │
+│   └─────────────────────────────────┘   │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Styling**:
+- Overlay: `rgba(8, 9, 10, 0.8)` - Void at 80%
+- Modal: 400px width, Elevated background, Border, Radius LG
+- Header: Padding 4, Border Bottom Subtle, Text Bright title
+- Body: Padding 4
+- Footer: Padding 3-4, Border Top Subtle, flex end for buttons
+
+**API Design**:
+```rust
+pub struct Modal {
+    title: SharedString,
+    body: AnyElement,
+    footer: Vec<AnyElement>,  // Usually buttons
+    on_dismiss: Option<Box<dyn Fn(&mut WindowContext)>>,  // Escape or overlay click
+}
+
+impl Modal {
+    pub fn new(title: impl Into<SharedString>) -> Self;
+    pub fn body(mut self, body: impl IntoElement) -> Self;
+    pub fn footer(mut self, elements: Vec<impl IntoElement>) -> Self;
+    pub fn on_dismiss(mut self, handler: impl Fn(&mut WindowContext) + 'static) -> Self;
+}
+```
+
+**Usage**:
+```rust
+Modal::new("Create Kild")
+    .body(
+        div()
+            .child(TextInput::new("").placeholder("Branch name"))
+            .child(/* agent dropdown */)
+    )
+    .footer(vec![
+        Button::new("Cancel").variant(ButtonVariant::Secondary),
+        Button::new("Create").variant(ButtonVariant::Primary),
+    ])
+    .on_dismiss(|cx| { /* close modal */ })
+```
+
+**Validation**:
+```bash
+cargo build -p kild-ui
+# Render Modal in a test view
+# Verify: Overlay darkens background
+# Verify: Modal is centered
+# Verify: Escape key triggers on_dismiss
+# Verify: Click outside modal triggers on_dismiss
+# Verify: Header/body/footer have correct spacing and borders
+```
+
+---
+
+#### 9.6 Theme Integration
+
+**Status**: TODO
+
+**What**: Apply the theme and components to all existing views. Final visual polish pass.
+
+**Why this subphase exists**: With all components ready, we integrate them into the actual UI and ensure visual consistency throughout.
+
+**Files to Modify**:
+| File | Change |
+|------|--------|
+| `crates/kild-ui/src/views/main_view.rs` | Use theme colors, Button component |
+| `crates/kild-ui/src/views/kild_list.rs` | Use theme colors, StatusIndicator, action buttons |
+| `crates/kild-ui/src/views/create_dialog.rs` | Use Modal, TextInput, Button components |
+| `crates/kild-ui/src/views/project_selector.rs` | Use theme colors |
+| `crates/kild-ui/src/views/detail_panel.rs` | Use theme colors, StatusIndicator, Button |
+
+**Checklist**:
+
+- [ ] **Header**: Logo, stats with StatusIndicator dots, bulk action Buttons
+- [ ] **Sidebar**: Project list with theme colors, selected state with Ice border
+- [ ] **Kild List**: StatusIndicator dots, row hover/selected states, action Buttons
+- [ ] **Detail Panel**: StatusIndicator badge, info rows, action Buttons
+- [ ] **Create Dialog**: Modal wrapper, TextInput fields, Button footer
+- [ ] **Footer**: Theme colors for shortcut hints (if implemented)
+
+**Color Replacements**:
+```rust
+// Before (hardcoded)
+.background_color(rgb(0x151719))
+
+// After (themed)
+use crate::theme::{self, SURFACE};
+.background_color(theme::color(SURFACE))
+```
+
+**Validation**:
+```bash
+cargo run -p kild-ui
+
+# Visual checklist:
+# [ ] Colors match mockup-dashboard.html exactly
+# [ ] All buttons use Button component with correct variants
+# [ ] All status indicators use StatusIndicator component
+# [ ] Create dialog uses Modal + TextInput + Button
+# [ ] Hover states work on rows and buttons
+# [ ] Focus states show Ice ring on inputs
+# [ ] Selected states show Ice accent
+# [ ] No hardcoded colors remain in view files
+```
+
+**Final Validation** (full Phase 9):
+```bash
+cargo run -p kild-ui
+# Screenshot the UI
+# Compare side-by-side with mockup-dashboard.html
+# Verify: Visual match within reasonable tolerance
+# Verify: All interactive states work (hover, focus, selected)
+# Verify: Components are reusable (no duplication)
+```
 
 ---
 
