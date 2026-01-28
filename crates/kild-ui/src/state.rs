@@ -4,6 +4,7 @@
 //! create dialog, and form state.
 
 use kild_core::Session;
+use kild_core::git::{operations::get_diff_stats, types::DiffStats};
 use std::path::PathBuf;
 
 use crate::projects::Project;
@@ -43,6 +44,7 @@ pub struct KildDisplay {
     pub session: Session,
     pub status: ProcessStatus,
     pub git_status: GitStatus,
+    pub diff_stats: Option<DiffStats>,
 }
 
 /// Check if a worktree has uncommitted changes.
@@ -110,10 +112,29 @@ impl KildDisplay {
             GitStatus::Unknown
         };
 
+        // Compute diff stats if worktree exists and is dirty
+        let diff_stats = if git_status == GitStatus::Dirty {
+            match get_diff_stats(&session.worktree_path) {
+                Ok(stats) => Some(stats),
+                Err(e) => {
+                    tracing::warn!(
+                        event = "ui.kild_list.diff_stats_failed",
+                        path = %session.worktree_path.display(),
+                        error = %e,
+                        "Failed to compute diff stats - showing fallback indicator"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             session,
             status,
             git_status,
+            diff_stats,
         }
     }
 }
@@ -527,6 +548,80 @@ mod tests {
     }
 
     #[test]
+    fn test_kild_display_from_session_populates_diff_stats_when_dirty() {
+        use kild_core::sessions::types::SessionStatus;
+        use std::process::Command;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path();
+
+        // Initialize git repo with a commit
+        Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        std::fs::write(path.join("test.txt"), "line1\n").unwrap();
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(path)
+            .output()
+            .unwrap();
+
+        // Make it dirty (unstaged changes)
+        std::fs::write(path.join("test.txt"), "line1\nline2\nline3\n").unwrap();
+
+        let session = Session {
+            id: "test".to_string(),
+            branch: "test".to_string(),
+            worktree_path: path.to_path_buf(),
+            agent: "claude".to_string(),
+            project_id: "test".to_string(),
+            status: SessionStatus::Active,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
+            terminal_type: None,
+            terminal_window_id: None,
+            command: String::new(),
+            last_activity: None,
+            note: None,
+        };
+
+        let display = KildDisplay::from_session(session);
+
+        assert_eq!(display.git_status, GitStatus::Dirty);
+        assert!(
+            display.diff_stats.is_some(),
+            "diff_stats should be populated for dirty repo"
+        );
+        let stats = display.diff_stats.unwrap();
+        assert_eq!(stats.insertions, 2, "Should have 2 insertions");
+        assert_eq!(stats.files_changed, 1);
+        assert!(stats.has_changes());
+    }
+
+    #[test]
     fn test_git_status_clean_repo() {
         use std::process::Command;
         use tempfile::TempDir;
@@ -928,16 +1023,19 @@ mod tests {
                 session: session_with_dead_pid,
                 status: ProcessStatus::Running, // Start as Running (incorrect)
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: session_with_live_pid,
                 status: ProcessStatus::Stopped, // Start as Stopped (incorrect)
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: session_no_pid,
                 status: ProcessStatus::Stopped, // Start as Stopped (correct)
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
         ];
 
@@ -1005,26 +1103,31 @@ mod tests {
                 session: make_session("1", "branch-1"),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("2", "branch-2"),
                 status: ProcessStatus::Running,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("3", "branch-3"),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("4", "branch-4"),
                 status: ProcessStatus::Running,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("5", "branch-5"),
                 status: ProcessStatus::Unknown,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
         ];
 
@@ -1096,11 +1199,13 @@ mod tests {
                 session: make_session("1", "project-a"),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("2", "project-b"),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
         ];
 
@@ -1145,16 +1250,19 @@ mod tests {
                 session: make_session("1", &project_id_a),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("2", &project_id_b),
                 status: ProcessStatus::Stopped,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
             KildDisplay {
                 session: make_session("3", &project_id_a),
                 status: ProcessStatus::Running,
                 git_status: GitStatus::Unknown,
+                diff_stats: None,
             },
         ];
 
@@ -1199,6 +1307,7 @@ mod tests {
             session: make_session("1", "other-project-hash"),
             status: ProcessStatus::Stopped,
             git_status: GitStatus::Unknown,
+            diff_stats: None,
         }];
 
         // Active project set to a different path - should return empty
