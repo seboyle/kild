@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use crate::actions;
 use crate::state::{AddProjectDialogField, AppState, CreateDialogField};
 use crate::views::{
-    add_project_dialog, confirm_dialog, create_dialog, kild_list, project_selector,
+    add_project_dialog, confirm_dialog, create_dialog, detail_panel, kild_list, project_selector,
 };
 
 /// Normalize user-entered path for project addition.
@@ -260,6 +260,14 @@ impl MainView {
 
         match actions::destroy_kild(&branch) {
             Ok(()) => {
+                // Clear selection if the destroyed kild was selected
+                // After refresh, the selected kild won't exist in the list anyway,
+                // but clearing explicitly ensures the panel disappears immediately
+                if let Some(selected) = self.state.selected_kild()
+                    && selected.session.branch == branch
+                {
+                    self.state.clear_selection();
+                }
                 self.state.reset_confirm_dialog();
                 self.state.refresh_sessions();
             }
@@ -279,6 +287,13 @@ impl MainView {
     pub fn on_confirm_cancel(&mut self, cx: &mut Context<Self>) {
         tracing::info!(event = "ui.confirm_dialog.cancelled");
         self.state.reset_confirm_dialog();
+        cx.notify();
+    }
+
+    /// Handle kild row click - select for detail panel.
+    pub fn on_kild_select(&mut self, session_id: &str, cx: &mut Context<Self>) {
+        tracing::debug!(event = "ui.kild.selected", session_id = session_id);
+        self.state.selected_kild_id = Some(session_id.to_string());
         cx.notify();
     }
 
@@ -433,28 +448,30 @@ impl MainView {
         );
         self.state.clear_focus_error();
 
-        let result = if let (Some(tt), Some(wid)) = (terminal_type, window_id) {
-            kild_core::terminal_ops::focus_terminal(tt, wid)
-                .map_err(|e| format!("Failed to focus terminal: {}", e))
-        } else if terminal_type.is_none() && window_id.is_none() {
-            tracing::debug!(
-                event = "ui.focus_terminal_no_window_info",
-                branch = branch,
-                message = "Legacy session - no terminal info recorded"
-            );
-            Err("Terminal window info not available. This session was created before window tracking was added.".to_string())
-        } else {
-            tracing::warn!(
-                event = "ui.focus_terminal_inconsistent_state",
-                branch = branch,
-                has_terminal_type = terminal_type.is_some(),
-                has_window_id = window_id.is_some(),
-                message = "Inconsistent terminal state - one field present, one missing"
-            );
-            Err(
-                "Terminal window info is incomplete. Try stopping and reopening the kild."
-                    .to_string(),
-            )
+        let result = match (terminal_type, window_id) {
+            (Some(tt), Some(wid)) => kild_core::terminal_ops::focus_terminal(tt, wid)
+                .map_err(|e| format!("Failed to focus terminal: {}", e)),
+            (None, None) => {
+                tracing::debug!(
+                    event = "ui.focus_terminal_no_window_info",
+                    branch = branch,
+                    message = "Legacy session - no terminal info recorded"
+                );
+                Err("Terminal window info not available. This session was created before window tracking was added.".to_string())
+            }
+            _ => {
+                tracing::warn!(
+                    event = "ui.focus_terminal_inconsistent_state",
+                    branch = branch,
+                    has_terminal_type = terminal_type.is_some(),
+                    has_window_id = window_id.is_some(),
+                    message = "Inconsistent terminal state - one field present, one missing"
+                );
+                Err(
+                    "Terminal window info is incomplete. Try stopping and reopening the kild."
+                        .to_string(),
+                )
+            }
         };
 
         if let Err(e) = result {
@@ -652,10 +669,12 @@ impl MainView {
                 }
                 "tab" => {
                     // Cycle focus between fields
+                    let current_field = &self.state.add_project_form.focused_field;
                     self.state.add_project_form.focused_field =
-                        match self.state.add_project_form.focused_field {
-                            AddProjectDialogField::Path => AddProjectDialogField::Name,
-                            AddProjectDialogField::Name => AddProjectDialogField::Path,
+                        if matches!(current_field, AddProjectDialogField::Path) {
+                            AddProjectDialogField::Name
+                        } else {
+                            AddProjectDialogField::Path
                         };
                     cx.notify();
                 }
@@ -910,8 +929,24 @@ impl Render for MainView {
                         })),
                 )
             })
-            // KILD list
-            .child(kild_list::render_kild_list(&self.state, cx))
+            // KILD list and detail panel (2-column layout when kild selected)
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .overflow_hidden()
+                    // Kild list (flexible width)
+                    .child(
+                        div()
+                            .flex_1()
+                            .overflow_hidden()
+                            .child(kild_list::render_kild_list(&self.state, cx)),
+                    )
+                    // Detail panel (fixed 320px, conditional)
+                    .when(self.state.selected_kild_id.is_some(), |this| {
+                        this.child(detail_panel::render_detail_panel(&self.state, cx))
+                    }),
+            )
             // Create dialog (conditional)
             .when(self.state.show_create_dialog, |this| {
                 this.child(create_dialog::render_create_dialog(&self.state, cx))

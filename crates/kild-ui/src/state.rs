@@ -89,9 +89,8 @@ fn check_git_status(worktree_path: &std::path::Path) -> GitStatus {
 
 impl KildDisplay {
     pub fn from_session(session: Session) -> Self {
-        let status = match session.process_id {
-            None => ProcessStatus::Stopped,
-            Some(pid) => match kild_core::process::is_process_running(pid) {
+        let status = if let Some(pid) = session.process_id {
+            match kild_core::process::is_process_running(pid) {
                 Ok(true) => ProcessStatus::Running,
                 Ok(false) => ProcessStatus::Stopped,
                 Err(e) => {
@@ -103,7 +102,9 @@ impl KildDisplay {
                     );
                     ProcessStatus::Unknown
                 }
-            },
+            }
+        } else {
+            ProcessStatus::Stopped
         };
 
         let git_status = if session.worktree_path.exists() {
@@ -264,6 +265,9 @@ pub struct AppState {
     // Focus terminal error state (shown inline per-row)
     pub focus_error: Option<OperationError>,
 
+    /// ID of the currently selected kild (for detail panel)
+    pub selected_kild_id: Option<String>,
+
     /// Timestamp of last successful status refresh
     pub last_refresh: std::time::Instant,
 
@@ -307,6 +311,7 @@ impl AppState {
             bulk_errors: Vec::new(),
             editor_error: None,
             focus_error: None,
+            selected_kild_id: None,
             last_refresh: std::time::Instant::now(),
             projects: projects_data.projects,
             active_project: projects_data.active,
@@ -331,6 +336,9 @@ impl AppState {
     /// - Doesn't reload session files from disk
     /// - Only checks if tracked processes are still running
     /// - Preserves the existing kild list structure
+    ///
+    /// Note: This does NOT update git status or diff stats. Use `refresh_sessions()`
+    /// for a full refresh that includes git information.
     pub fn update_statuses_only(&mut self) {
         for kild_display in &mut self.displays {
             kild_display.status = match kild_display.session.process_id {
@@ -410,15 +418,15 @@ impl AppState {
     /// Uses path-based hashing that matches kild-core's `generate_project_id`.
     /// If no active project is set, returns all displays (unfiltered).
     pub fn filtered_displays(&self) -> Vec<&KildDisplay> {
-        let Some(active_id) = self.active_project_id() else {
+        if let Some(active_id) = self.active_project_id() {
+            self.displays
+                .iter()
+                .filter(|d| d.session.project_id == active_id)
+                .collect()
+        } else {
             // No active project - show all kilds
-            return self.displays.iter().collect();
-        };
-
-        self.displays
-            .iter()
-            .filter(|d| d.session.project_id == active_id)
-            .collect()
+            self.displays.iter().collect()
+        }
     }
 
     /// Count kilds with Stopped status.
@@ -435,6 +443,31 @@ impl AppState {
             .iter()
             .filter(|d| d.status == ProcessStatus::Running)
             .count()
+    }
+
+    /// Get the selected kild display, if any.
+    ///
+    /// Returns `None` if no kild is selected or if the selected kild no longer
+    /// exists in the current display list (e.g., after being destroyed externally).
+    pub fn selected_kild(&self) -> Option<&KildDisplay> {
+        let id = self.selected_kild_id.as_ref()?;
+
+        match self.displays.iter().find(|d| d.session.id == *id) {
+            Some(kild) => Some(kild),
+            None => {
+                tracing::debug!(
+                    event = "ui.state.stale_selection",
+                    selected_id = id,
+                    "Selected kild not found in current display list"
+                );
+                None
+            }
+        }
+    }
+
+    /// Clear selection (e.g., when kild is destroyed).
+    pub fn clear_selection(&mut self) {
+        self.selected_kild_id = None;
     }
 }
 
@@ -464,6 +497,7 @@ mod tests {
             bulk_errors: Vec::new(),
             editor_error: None,
             focus_error: None,
+            selected_kild_id: None,
             last_refresh: std::time::Instant::now(),
             projects: Vec::new(),
             active_project: None,
@@ -1317,5 +1351,242 @@ mod tests {
             filtered.is_empty(),
             "Should return empty when no kilds match active project"
         );
+    }
+
+    #[test]
+    fn test_selected_kild_returns_none_when_kild_removed_after_refresh() {
+        use kild_core::sessions::types::SessionStatus;
+
+        let make_session = |id: &str| Session {
+            id: id.to_string(),
+            branch: format!("branch-{}", id),
+            worktree_path: PathBuf::from("/tmp/test"),
+            agent: "claude".to_string(),
+            project_id: "test-project".to_string(),
+            status: SessionStatus::Active,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
+            terminal_type: None,
+            terminal_window_id: None,
+            command: String::new(),
+            last_activity: None,
+            note: None,
+        };
+
+        let mut state = make_test_state();
+        state.displays = vec![KildDisplay {
+            session: make_session("test-id"),
+            status: ProcessStatus::Stopped,
+            git_status: GitStatus::Unknown,
+            diff_stats: None,
+        }];
+        state.selected_kild_id = Some("test-id".to_string());
+
+        // Verify selection works initially
+        assert!(state.selected_kild().is_some());
+
+        // Simulate refresh that removes the kild (e.g., destroyed via CLI)
+        state.displays.clear();
+
+        // Selection ID still set, but selected_kild() should return None gracefully
+        assert!(state.selected_kild_id.is_some());
+        assert!(
+            state.selected_kild().is_none(),
+            "Should return None when selected kild no longer exists"
+        );
+    }
+
+    #[test]
+    fn test_selected_kild_persists_after_refresh_when_kild_still_exists() {
+        use kild_core::sessions::types::SessionStatus;
+
+        let make_session = |id: &str| Session {
+            id: id.to_string(),
+            branch: format!("branch-{}", id),
+            worktree_path: PathBuf::from("/tmp/test"),
+            agent: "claude".to_string(),
+            project_id: "test-project".to_string(),
+            status: SessionStatus::Active,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
+            terminal_type: None,
+            terminal_window_id: None,
+            command: String::new(),
+            last_activity: None,
+            note: None,
+        };
+
+        let mut state = make_test_state();
+        state.displays = vec![KildDisplay {
+            session: make_session("test-id"),
+            status: ProcessStatus::Stopped,
+            git_status: GitStatus::Unknown,
+            diff_stats: None,
+        }];
+        state.selected_kild_id = Some("test-id".to_string());
+
+        // Verify initial selection
+        assert!(state.selected_kild().is_some());
+
+        // Simulate refresh that keeps the same kild (new display list with same ID)
+        state.displays = vec![KildDisplay {
+            session: make_session("test-id"),
+            status: ProcessStatus::Running, // Status may change
+            git_status: GitStatus::Dirty,   // Git status may change
+            diff_stats: None,
+        }];
+
+        // Selection should persist
+        let selected = state.selected_kild();
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().session.id, "test-id");
+    }
+
+    #[test]
+    fn test_clear_selection_clears_selected_kild_id() {
+        let mut state = make_test_state();
+        state.selected_kild_id = Some("test-id".to_string());
+
+        assert!(state.selected_kild_id.is_some());
+
+        state.clear_selection();
+
+        assert!(
+            state.selected_kild_id.is_none(),
+            "clear_selection should set selected_kild_id to None"
+        );
+    }
+
+    #[test]
+    fn test_destroy_should_clear_selection_when_selected_kild_destroyed() {
+        use kild_core::sessions::types::SessionStatus;
+
+        let make_session = |id: &str, branch: &str| Session {
+            id: id.to_string(),
+            branch: branch.to_string(),
+            worktree_path: PathBuf::from("/tmp/test"),
+            agent: "claude".to_string(),
+            project_id: "test-project".to_string(),
+            status: SessionStatus::Active,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
+            terminal_type: None,
+            terminal_window_id: None,
+            command: String::new(),
+            last_activity: None,
+            note: None,
+        };
+
+        let mut state = make_test_state();
+        state.displays = vec![
+            KildDisplay {
+                session: make_session("id-1", "branch-1"),
+                status: ProcessStatus::Stopped,
+                git_status: GitStatus::Unknown,
+                diff_stats: None,
+            },
+            KildDisplay {
+                session: make_session("id-2", "branch-2"),
+                status: ProcessStatus::Stopped,
+                git_status: GitStatus::Unknown,
+                diff_stats: None,
+            },
+        ];
+        state.selected_kild_id = Some("id-1".to_string());
+
+        // Simulate destroy of selected kild - the destroy handler logic:
+        // if selected_kild().session.branch == destroyed_branch { clear_selection() }
+        let destroyed_branch = "branch-1";
+        if let Some(selected) = state.selected_kild() {
+            if selected.session.branch == destroyed_branch {
+                state.clear_selection();
+            }
+        }
+        state
+            .displays
+            .retain(|d| d.session.branch != destroyed_branch);
+
+        // Selection should be cleared
+        assert!(
+            state.selected_kild_id.is_none(),
+            "Selection should be cleared when selected kild is destroyed"
+        );
+    }
+
+    #[test]
+    fn test_destroy_preserves_selection_when_different_kild_destroyed() {
+        use kild_core::sessions::types::SessionStatus;
+
+        let make_session = |id: &str, branch: &str| Session {
+            id: id.to_string(),
+            branch: branch.to_string(),
+            worktree_path: PathBuf::from("/tmp/test"),
+            agent: "claude".to_string(),
+            project_id: "test-project".to_string(),
+            status: SessionStatus::Active,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            port_range_start: 0,
+            port_range_end: 0,
+            port_count: 0,
+            process_id: None,
+            process_name: None,
+            process_start_time: None,
+            terminal_type: None,
+            terminal_window_id: None,
+            command: String::new(),
+            last_activity: None,
+            note: None,
+        };
+
+        let mut state = make_test_state();
+        state.displays = vec![
+            KildDisplay {
+                session: make_session("id-1", "branch-1"),
+                status: ProcessStatus::Stopped,
+                git_status: GitStatus::Unknown,
+                diff_stats: None,
+            },
+            KildDisplay {
+                session: make_session("id-2", "branch-2"),
+                status: ProcessStatus::Stopped,
+                git_status: GitStatus::Unknown,
+                diff_stats: None,
+            },
+        ];
+        state.selected_kild_id = Some("id-1".to_string());
+
+        // Destroy branch-2 (not selected)
+        let destroyed_branch = "branch-2";
+        if let Some(selected) = state.selected_kild() {
+            if selected.session.branch == destroyed_branch {
+                state.clear_selection();
+            }
+        }
+        state
+            .displays
+            .retain(|d| d.session.branch != destroyed_branch);
+
+        // Selection of branch-1 should persist
+        assert_eq!(
+            state.selected_kild_id,
+            Some("id-1".to_string()),
+            "Selection should persist when a different kild is destroyed"
+        );
+        assert!(state.selected_kild().is_some());
     }
 }

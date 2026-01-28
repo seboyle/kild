@@ -120,6 +120,7 @@ pub fn render_kild_list(state: &AppState, cx: &mut Context<MainView>) -> impl In
             let stop_error = state.stop_error.clone();
             let editor_error = state.editor_error.clone();
             let focus_error = state.focus_error.clone();
+            let selected_kild_id = state.selected_kild_id.clone();
 
             div().flex_1().child(
                 uniform_list(
@@ -143,9 +144,13 @@ pub fn render_kild_list(state: &AppState, cx: &mut Context<MainView>) -> impl In
                                     [&open_error, &stop_error, &editor_error, &focus_error]
                                         .iter()
                                         .find_map(|err| {
-                                            err.as_ref()
-                                                .filter(|e| e.branch == branch)
-                                                .map(|e| e.message.clone())
+                                            err.as_ref().and_then(|e| {
+                                                if e.branch == branch {
+                                                    Some(e.message.clone())
+                                                } else {
+                                                    None
+                                                }
+                                            })
                                         });
 
                                 // Show Open button when stopped, Stop button when running
@@ -167,11 +172,26 @@ pub fn render_kild_list(state: &AppState, cx: &mut Context<MainView>) -> impl In
                                     display.session.terminal_window_id.clone();
                                 let branch_for_focus = branch.clone();
 
+                                // Selection state
+                                let session_id = display.session.id.clone();
+                                let is_selected = selected_kild_id.as_ref() == Some(&session_id);
+                                let session_id_for_click = session_id.clone();
+
                                 div()
                                     .id(ix)
                                     .w_full()
                                     .flex()
                                     .flex_col()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(move |view, _, _, cx| {
+                                        view.on_kild_select(&session_id_for_click, cx);
+                                    }))
+                                    // Selected state styling (ice left border)
+                                    .when(is_selected, |row| {
+                                        row.border_l_2()
+                                            .border_color(theme::ice())
+                                            .bg(theme::surface())
+                                    })
                                     // Main row
                                     .child(
                                         div()
@@ -264,10 +284,17 @@ pub fn render_kild_list(state: &AppState, cx: &mut Context<MainView>) -> impl In
                                                     )
                                                 },
                                             )
-                                            // Note column (truncated to 25 chars)
+                                            // Note column (truncated to 25 characters - uses char count, not bytes)
                                             .when_some(note, |row, note_text| {
-                                                let display_text = if note_text.len() > 25 {
-                                                    format!("{}...", &note_text[..25])
+                                                let display_text = if note_text.chars().count() > 25
+                                                {
+                                                    format!(
+                                                        "{}...",
+                                                        note_text
+                                                            .chars()
+                                                            .take(25)
+                                                            .collect::<String>()
+                                                    )
                                                 } else {
                                                     note_text
                                                 };
