@@ -144,6 +144,7 @@ cargo run -p kild-peek -- -v list windows        # Verbose mode (enable logs)
 - `agents/` - Agent backend system (amp, claude, kiro, gemini, codex)
 - `git/` - Git worktree operations via git2
 - `config/` - Hierarchical TOML config (defaults → user → project → CLI)
+- `projects/` - Project management (types, validation, persistence, manager)
 - `cleanup/` - Orphaned resource cleanup with multiple strategies
 - `health/` - Session health monitoring
 - `process/` - PID tracking and process info
@@ -153,7 +154,6 @@ cargo run -p kild-peek -- -v list windows        # Verbose mode (enable logs)
 **Key modules in kild-ui:**
 - `theme.rs` - Centralized color palette, typography, and spacing constants (Tallinn Night brand system)
 - `components/` - Reusable UI components (Button, StatusIndicator, Modal, TextInput with themed variants)
-- `projects.rs` - Project storage, validation, persistence to ~/.kild/projects.json
 - `state.rs` - Type-safe state modules with encapsulated AppState facade (DialogState, ProjectManager, SessionStore, SelectionState, OperationErrors)
 - `actions.rs` - User actions (create, open, stop, destroy, project management)
 - `views/` - GPUI components (main view with 3-column layout: sidebar, kild list, detail panel)
@@ -170,7 +170,7 @@ cargo run -p kild-peek -- -v list windows        # Verbose mode (enable logs)
 - `logging/` - Tracing initialization matching kild-core patterns
 - `events/` - App lifecycle event helpers
 
-**Module pattern:** Each domain follows `errors.rs`, `types.rs`, `operations.rs`, `handler.rs` structure.
+**Module pattern:** Each domain starts with `errors.rs`, `types.rs`, `mod.rs`. Additional files vary by domain (e.g., `operations.rs`/`handler.rs` for sessions, `manager.rs`/`persistence.rs` for projects).
 
 **CLI interaction:** Commands delegate directly to `kild-core` handlers. No business logic in CLI layer.
 
@@ -203,6 +203,8 @@ All events follow: `{layer}.{domain}.{action}_{state}`
 | `peek.core` | `crates/kild-peek-core/` | kild-peek core library |
 
 **Domains:** `session`, `terminal`, `git`, `cleanup`, `health`, `files`, `process`, `pid_file`, `app`, `projects`, `watcher`, `window`, `screenshot`, `diff`, `assert`, `interact`, `element`
+
+Note: `projects` domain events are `core.projects.*` (in kild-core), while UI-specific events use `ui.*` prefix.
 
 **State suffixes:** `_started`, `_completed`, `_failed`, `_skipped`
 
@@ -273,7 +275,7 @@ grep 'event":"peek\.cli\.'  # kild-peek CLI events
 grep 'core\.session\.'  # Session events
 grep 'core\.terminal\.' # Terminal events
 grep 'core\.git\.'      # Git events
-grep 'ui\.projects\.'   # Project management events
+grep 'core\.projects\.' # Project management events
 grep 'ui\.watcher\.'    # File watcher events
 grep 'peek\.core\.window\.'     # Window enumeration events
 grep 'peek\.core\.screenshot\.' # Screenshot capture events
