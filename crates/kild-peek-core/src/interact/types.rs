@@ -14,22 +14,50 @@ pub enum InteractionTarget {
 /// Request to click at coordinates within a window
 #[derive(Debug, Clone)]
 pub struct ClickRequest {
-    pub target: InteractionTarget,
-    pub x: i32,
-    pub y: i32,
+    target: InteractionTarget,
+    x: i32,
+    y: i32,
+    timeout_ms: Option<u64>,
 }
 
 impl ClickRequest {
     pub fn new(target: InteractionTarget, x: i32, y: i32) -> Self {
-        Self { target, x, y }
+        Self {
+            target,
+            x,
+            y,
+            timeout_ms: None,
+        }
+    }
+
+    pub fn with_wait(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    pub fn target(&self) -> &InteractionTarget {
+        &self.target
+    }
+
+    pub fn x(&self) -> i32 {
+        self.x
+    }
+
+    pub fn y(&self) -> i32 {
+        self.y
+    }
+
+    pub fn timeout_ms(&self) -> Option<u64> {
+        self.timeout_ms
     }
 }
 
 /// Request to type text into the focused element
 #[derive(Debug, Clone)]
 pub struct TypeRequest {
-    pub target: InteractionTarget,
-    pub text: String,
+    target: InteractionTarget,
+    text: String,
+    timeout_ms: Option<u64>,
 }
 
 impl TypeRequest {
@@ -37,40 +65,13 @@ impl TypeRequest {
         Self {
             target,
             text: text.into(),
+            timeout_ms: None,
         }
     }
-}
 
-/// Request to send a key combination
-#[derive(Debug, Clone)]
-pub struct KeyComboRequest {
-    pub target: InteractionTarget,
-    /// Key combination string, e.g., "cmd+s", "enter", "cmd+shift+p"
-    pub combo: String,
-}
-
-impl KeyComboRequest {
-    pub fn new(target: InteractionTarget, combo: impl Into<String>) -> Self {
-        Self {
-            target,
-            combo: combo.into(),
-        }
-    }
-}
-
-/// Request to click an element identified by text content
-#[derive(Debug, Clone)]
-pub struct ClickTextRequest {
-    target: InteractionTarget,
-    text: String,
-}
-
-impl ClickTextRequest {
-    pub fn new(target: InteractionTarget, text: impl Into<String>) -> Self {
-        Self {
-            target,
-            text: text.into(),
-        }
+    pub fn with_wait(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
     }
 
     pub fn target(&self) -> &InteractionTarget {
@@ -79,6 +80,81 @@ impl ClickTextRequest {
 
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    pub fn timeout_ms(&self) -> Option<u64> {
+        self.timeout_ms
+    }
+}
+
+/// Request to send a key combination
+#[derive(Debug, Clone)]
+pub struct KeyComboRequest {
+    target: InteractionTarget,
+    /// Key combination string, e.g., "cmd+s", "enter", "cmd+shift+p"
+    combo: String,
+    timeout_ms: Option<u64>,
+}
+
+impl KeyComboRequest {
+    pub fn new(target: InteractionTarget, combo: impl Into<String>) -> Self {
+        Self {
+            target,
+            combo: combo.into(),
+            timeout_ms: None,
+        }
+    }
+
+    pub fn with_wait(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    pub fn target(&self) -> &InteractionTarget {
+        &self.target
+    }
+
+    pub fn combo(&self) -> &str {
+        &self.combo
+    }
+
+    pub fn timeout_ms(&self) -> Option<u64> {
+        self.timeout_ms
+    }
+}
+
+/// Request to click an element identified by text content
+#[derive(Debug, Clone)]
+pub struct ClickTextRequest {
+    target: InteractionTarget,
+    text: String,
+    timeout_ms: Option<u64>,
+}
+
+impl ClickTextRequest {
+    pub fn new(target: InteractionTarget, text: impl Into<String>) -> Self {
+        Self {
+            target,
+            text: text.into(),
+            timeout_ms: None,
+        }
+    }
+
+    pub fn with_wait(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    pub fn target(&self) -> &InteractionTarget {
+        &self.target
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn timeout_ms(&self) -> Option<u64> {
+        self.timeout_ms
     }
 }
 
@@ -124,9 +200,9 @@ mod tests {
             100,
             50,
         );
-        assert_eq!(req.x, 100);
-        assert_eq!(req.y, 50);
-        match &req.target {
+        assert_eq!(req.x(), 100);
+        assert_eq!(req.y(), 50);
+        match req.target() {
             InteractionTarget::Window { title } => assert_eq!(title, "Terminal"),
             _ => panic!("Expected Window target"),
         }
@@ -140,8 +216,8 @@ mod tests {
             },
             "hello world",
         );
-        assert_eq!(req.text, "hello world");
-        match &req.target {
+        assert_eq!(req.text(), "hello world");
+        match req.target() {
             InteractionTarget::App { app } => assert_eq!(app, "TextEdit"),
             _ => panic!("Expected App target"),
         }
@@ -156,8 +232,8 @@ mod tests {
             },
             "cmd+s",
         );
-        assert_eq!(req.combo, "cmd+s");
-        match &req.target {
+        assert_eq!(req.combo(), "cmd+s");
+        match req.target() {
             InteractionTarget::AppAndWindow { app, title } => {
                 assert_eq!(app, "Ghostty");
                 assert_eq!(title, "Terminal");
@@ -238,5 +314,77 @@ mod tests {
         let debug = format!("{:?}", target);
         assert!(debug.contains("Window"));
         assert!(debug.contains("Test"));
+    }
+
+    #[test]
+    fn test_click_request_default_timeout_none() {
+        let req = ClickRequest::new(
+            InteractionTarget::Window {
+                title: "Terminal".to_string(),
+            },
+            100,
+            50,
+        );
+        assert!(req.timeout_ms().is_none());
+    }
+
+    #[test]
+    fn test_click_request_with_wait() {
+        let req = ClickRequest::new(
+            InteractionTarget::Window {
+                title: "Terminal".to_string(),
+            },
+            100,
+            50,
+        )
+        .with_wait(5000);
+        assert_eq!(req.timeout_ms(), Some(5000));
+    }
+
+    #[test]
+    fn test_type_request_with_wait() {
+        let req = TypeRequest::new(
+            InteractionTarget::App {
+                app: "TextEdit".to_string(),
+            },
+            "hello",
+        )
+        .with_wait(3000);
+        assert_eq!(req.timeout_ms(), Some(3000));
+    }
+
+    #[test]
+    fn test_key_combo_request_with_wait() {
+        let req = KeyComboRequest::new(
+            InteractionTarget::App {
+                app: "Ghostty".to_string(),
+            },
+            "cmd+s",
+        )
+        .with_wait(10000);
+        assert_eq!(req.timeout_ms(), Some(10000));
+    }
+
+    #[test]
+    fn test_click_text_request_with_wait() {
+        let req = ClickTextRequest::new(
+            InteractionTarget::App {
+                app: "Finder".to_string(),
+            },
+            "File",
+        )
+        .with_wait(5000);
+        assert_eq!(req.timeout_ms(), Some(5000));
+    }
+
+    #[test]
+    fn test_click_text_request_default_timeout_none() {
+        let req = ClickTextRequest::new(
+            InteractionTarget::App {
+                app: "Finder".to_string(),
+            },
+            "File",
+        );
+        assert!(req.timeout_ms().is_none());
     }
 }
