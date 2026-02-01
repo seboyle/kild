@@ -8,3 +8,5 @@
 .env*
 *.local.json
 build/
+
+.kild/config.toml
