@@ -1,5 +1,5 @@
 use kild_core::SessionInfo;
-use kild_core::projects::{Project, ProjectError, ProjectManager};
+use kild_core::projects::{Project, ProjectManager};
 
 use super::dialog::DialogState;
 use super::errors::{OperationError, OperationErrors};
@@ -126,10 +126,19 @@ impl AppState {
                 kild_core::Event::SessionsRefreshed => {
                     // Already handled by the refresh call that produced this event
                 }
-                kild_core::Event::ProjectAdded { .. }
-                | kild_core::Event::ProjectRemoved { .. }
-                | kild_core::Event::ActiveProjectChanged { .. } => {
-                    // Not yet dispatched — project commands return NotImplemented
+                kild_core::Event::ProjectAdded { .. } => {
+                    self.reload_projects();
+                    self.close_dialog();
+                    self.refresh_sessions();
+                }
+                kild_core::Event::ProjectRemoved { .. } => {
+                    self.reload_projects();
+                    self.refresh_sessions();
+                    // Don't close dialog — removal isn't initiated from a modal,
+                    // so there's no dialog to dismiss (unlike ProjectAdded).
+                }
+                kild_core::Event::ActiveProjectChanged { .. } => {
+                    self.reload_projects();
                 }
             }
         }
@@ -438,26 +447,6 @@ impl AppState {
             self.startup_errors.push(load_error);
         }
         self.projects = ProjectManager::from_data(data.projects, data.active);
-    }
-
-    /// Select a project by path.
-    pub fn select_project(&mut self, path: &std::path::Path) -> Result<(), ProjectError> {
-        self.projects.select(path)
-    }
-
-    /// Select "all projects" view (clears active project selection).
-    pub fn select_all_projects(&mut self) {
-        self.projects.select_all();
-    }
-
-    /// Add a project to the list.
-    pub fn add_project(&mut self, project: Project) -> Result<(), ProjectError> {
-        self.projects.add(project)
-    }
-
-    /// Remove a project by path.
-    pub fn remove_project(&mut self, path: &std::path::Path) -> Result<Project, ProjectError> {
-        self.projects.remove(path)
     }
 
     /// Get the active project, if any.
@@ -1195,6 +1184,133 @@ mod tests {
         }]);
 
         assert!(!state.has_selection());
+    }
+
+    // --- apply_events project tests ---
+
+    #[test]
+    fn test_apply_project_added_closes_dialog() {
+        let mut state = AppState::test_new();
+        state.set_dialog(DialogState::open_add_project());
+
+        state.apply_events(&[Event::ProjectAdded {
+            path: PathBuf::from("/tmp/project"),
+            name: "Project".to_string(),
+        }]);
+
+        assert!(matches!(state.dialog(), DialogState::None));
+    }
+
+    #[test]
+    fn test_apply_project_removed_does_not_close_dialog() {
+        let mut state = AppState::test_new();
+        state.set_dialog(DialogState::open_create());
+
+        state.apply_events(&[Event::ProjectRemoved {
+            path: PathBuf::from("/tmp/project"),
+        }]);
+
+        // Remove project should not close dialogs
+        assert!(state.dialog().is_create());
+    }
+
+    #[test]
+    fn test_apply_active_project_changed() {
+        let mut state = AppState::test_new();
+
+        // Should not panic on empty project list
+        state.apply_events(&[Event::ActiveProjectChanged {
+            path: Some(PathBuf::from("/tmp/project")),
+        }]);
+    }
+
+    #[test]
+    fn test_apply_active_project_changed_to_none() {
+        let mut state = AppState::test_new();
+
+        // Should not panic
+        state.apply_events(&[Event::ActiveProjectChanged { path: None }]);
+    }
+
+    // --- Project error boundary tests ---
+
+    #[test]
+    fn test_add_project_error_preserves_dialog() {
+        let mut state = AppState::test_new();
+        state.set_dialog(DialogState::open_add_project());
+
+        // Simulate dispatch failure (invalid path)
+        let error = "Path does not exist".to_string();
+        state.set_dialog_error(error.clone());
+
+        // Dialog should remain open with error
+        assert!(state.dialog().is_add_project());
+        if let DialogState::AddProject { error: e, .. } = state.dialog() {
+            assert_eq!(e.as_deref(), Some("Path does not exist"));
+        } else {
+            panic!("Expected AddProject dialog");
+        }
+    }
+
+    #[test]
+    fn test_add_project_success_closes_dialog() {
+        let mut state = AppState::test_new();
+        state.set_dialog(DialogState::open_add_project());
+
+        // Simulate successful dispatch
+        state.apply_events(&[Event::ProjectAdded {
+            path: PathBuf::from("/tmp/project"),
+            name: "Project".to_string(),
+        }]);
+
+        // Dialog should be closed
+        assert!(matches!(state.dialog(), DialogState::None));
+    }
+
+    #[test]
+    fn test_add_project_error_then_success_clears_error_and_closes() {
+        let mut state = AppState::test_new();
+        state.set_dialog(DialogState::open_add_project());
+
+        // First attempt fails
+        state.set_dialog_error("Not a git repo".to_string());
+        assert!(state.dialog().is_add_project());
+
+        // Second attempt succeeds
+        state.apply_events(&[Event::ProjectAdded {
+            path: PathBuf::from("/tmp/project"),
+            name: "Project".to_string(),
+        }]);
+        assert!(matches!(state.dialog(), DialogState::None));
+    }
+
+    #[test]
+    fn test_select_project_error_surfaces_in_banner() {
+        let mut state = AppState::test_new();
+        assert!(!state.has_banner_errors());
+
+        // Simulate select project failure
+        state.push_error("Failed to select project: not found".to_string());
+
+        assert!(state.has_banner_errors());
+        assert_eq!(state.banner_errors().len(), 1);
+        assert_eq!(
+            state.banner_errors()[0],
+            "Failed to select project: not found"
+        );
+    }
+
+    #[test]
+    fn test_remove_project_error_surfaces_in_banner() {
+        let mut state = AppState::test_new();
+
+        state.push_error("Failed to remove project: permission denied".to_string());
+
+        assert!(state.has_banner_errors());
+        assert_eq!(
+            state.banner_errors()[0],
+            "Failed to remove project: permission denied"
+        );
     }
 
     // --- Loading facade tests ---
