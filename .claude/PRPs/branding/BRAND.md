@@ -299,16 +299,17 @@ The word means a splinter of ice, a fragment of glass. Something cut from a larg
 ## Part 9: What This Isn't
 
 KILD is not:
-- **An orchestration platform.** (We refuse to use that word.)
-- **An AI agent framework.** We manage where agents run, not how they think.
-- **A replacement for git.** Git does the actual branching. We wrap it.
+- **An AI agent framework.** We manage where agents run, not how they think. Even with embedded terminals, the AI runs in the terminal — KILD manages the runtime, not the model.
+- **A replacement for git.** Git is the foundation. We build intelligence on top of it.
 - **Enterprise software.** No dashboards with 47 metrics. No "observability." One developer, many agents, clarity.
 
 KILD is:
 - A precision tool for parallel AI work
 - Isolation so you can go fast without breaking things
 - Visibility so you don't lose track
-- A CLI that respects your time
+- Intelligence so you know which branches conflict before they do
+- A pipeline that lands parallel work back into main
+- A CLI (and GUI) that respects your time
 
 ---
 
