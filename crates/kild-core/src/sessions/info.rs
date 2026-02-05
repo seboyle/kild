@@ -386,6 +386,59 @@ mod tests {
     }
 
     #[test]
+    fn test_multi_agent_mixed_pids_and_no_pids() {
+        let mut session = make_session(PathBuf::from("/tmp/nonexistent"));
+        session.agents = vec![
+            make_agent("claude", Some(std::process::id())), // alive
+            make_agent("kiro", None),                       // no PID
+            make_agent("gemini", Some(999999)),             // dead
+        ];
+        // Should return Running because at least one is alive
+        assert_eq!(determine_process_status(&session), ProcessStatus::Running);
+    }
+
+    #[test]
+    fn test_session_add_agent_appends() {
+        let mut session = make_session(PathBuf::from("/tmp/nonexistent"));
+        assert!(!session.has_agents());
+        assert_eq!(session.agent_count(), 0);
+
+        session.add_agent(make_agent("claude", Some(12345)));
+        assert!(session.has_agents());
+        assert_eq!(session.agent_count(), 1);
+        assert_eq!(session.agents()[0].agent(), "claude");
+
+        session.add_agent(make_agent("kiro", Some(67890)));
+        assert_eq!(session.agent_count(), 2);
+        assert_eq!(session.agents()[1].agent(), "kiro");
+    }
+
+    #[test]
+    fn test_session_latest_agent() {
+        let mut session = make_session(PathBuf::from("/tmp/nonexistent"));
+        assert!(session.latest_agent().is_none());
+
+        session.add_agent(make_agent("claude", None));
+        assert_eq!(session.latest_agent().unwrap().agent(), "claude");
+
+        session.add_agent(make_agent("kiro", None));
+        assert_eq!(session.latest_agent().unwrap().agent(), "kiro");
+    }
+
+    #[test]
+    fn test_session_clear_agents() {
+        let mut session = make_session(PathBuf::from("/tmp/nonexistent"));
+        session.add_agent(make_agent("claude", Some(12345)));
+        session.add_agent(make_agent("kiro", Some(67890)));
+        assert_eq!(session.agent_count(), 2);
+
+        session.clear_agents();
+        assert!(!session.has_agents());
+        assert_eq!(session.agent_count(), 0);
+        assert!(session.latest_agent().is_none());
+    }
+
+    #[test]
     fn test_from_session_dirty_repo_has_diff_stats() {
         use std::process::Command;
         use tempfile::TempDir;

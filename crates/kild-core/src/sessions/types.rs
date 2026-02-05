@@ -264,7 +264,8 @@ pub struct Session {
 /// Invariant: `process_id`, `process_name`, and `process_start_time` must all
 /// be `Some` or all be `None`. This ensures PID reuse protection always has
 /// the metadata it needs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(into = "AgentProcessData")]
 pub struct AgentProcess {
     agent: String,
     process_id: Option<u32>,
@@ -274,6 +275,63 @@ pub struct AgentProcess {
     terminal_window_id: Option<String>,
     command: String,
     opened_at: String,
+}
+
+/// Internal serde representation that routes through [`AgentProcess::new`]
+/// on deserialization to enforce the PID metadata invariant.
+#[derive(Serialize, Deserialize)]
+struct AgentProcessData {
+    agent: String,
+    process_id: Option<u32>,
+    process_name: Option<String>,
+    process_start_time: Option<u64>,
+    terminal_type: Option<TerminalType>,
+    terminal_window_id: Option<String>,
+    command: String,
+    opened_at: String,
+}
+
+impl From<AgentProcess> for AgentProcessData {
+    fn from(ap: AgentProcess) -> Self {
+        Self {
+            agent: ap.agent,
+            process_id: ap.process_id,
+            process_name: ap.process_name,
+            process_start_time: ap.process_start_time,
+            terminal_type: ap.terminal_type,
+            terminal_window_id: ap.terminal_window_id,
+            command: ap.command,
+            opened_at: ap.opened_at,
+        }
+    }
+}
+
+impl TryFrom<AgentProcessData> for AgentProcess {
+    type Error = String;
+
+    fn try_from(data: AgentProcessData) -> Result<Self, Self::Error> {
+        AgentProcess::new(
+            data.agent,
+            data.process_id,
+            data.process_name,
+            data.process_start_time,
+            data.terminal_type,
+            data.terminal_window_id,
+            data.command,
+            data.opened_at,
+        )
+        .map_err(|e| e.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentProcess {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let data = AgentProcessData::deserialize(deserializer)?;
+        AgentProcess::try_from(data).map_err(serde::de::Error::custom)
+    }
 }
 
 impl AgentProcess {
@@ -1205,5 +1263,94 @@ mod tests {
         assert_eq!(deserialized.agent_count(), 2);
         assert_eq!(deserialized.agents()[0].agent(), "claude");
         assert_eq!(deserialized.agents()[1].agent(), "kiro");
+    }
+
+    #[test]
+    fn test_agent_process_deserialization_rejects_inconsistent_metadata() {
+        // JSON with process_id but missing process_name/process_start_time
+        let json = r#"{
+            "agent": "claude",
+            "process_id": 12345,
+            "process_name": null,
+            "process_start_time": null,
+            "terminal_type": null,
+            "terminal_window_id": null,
+            "command": "cmd",
+            "opened_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let result: Result<AgentProcess, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Invalid process metadata"),
+            "Expected InvalidProcessMetadata error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_agent_process_deserialization_accepts_consistent_metadata() {
+        // All Some
+        let json = r#"{
+            "agent": "claude",
+            "process_id": 12345,
+            "process_name": "claude-code",
+            "process_start_time": 1705318200,
+            "terminal_type": null,
+            "terminal_window_id": null,
+            "command": "cmd",
+            "opened_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let result: Result<AgentProcess, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+
+        // All None
+        let json = r#"{
+            "agent": "claude",
+            "process_id": null,
+            "process_name": null,
+            "process_start_time": null,
+            "terminal_type": null,
+            "terminal_window_id": null,
+            "command": "cmd",
+            "opened_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let result: Result<AgentProcess, _> = serde_json::from_str(json);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_session_with_corrupted_agent_fails_to_deserialize() {
+        // Session JSON where an agent has inconsistent metadata
+        let json = r#"{
+            "id": "test",
+            "project_id": "test-project",
+            "branch": "test-branch",
+            "worktree_path": "/tmp/test",
+            "agent": "claude",
+            "status": "Active",
+            "created_at": "2024-01-01T00:00:00Z",
+            "port_range_start": 3000,
+            "port_range_end": 3009,
+            "port_count": 10,
+            "process_id": null,
+            "process_name": null,
+            "process_start_time": null,
+            "command": "claude-code",
+            "agents": [
+                {
+                    "agent": "claude",
+                    "process_id": 12345,
+                    "process_name": null,
+                    "process_start_time": null,
+                    "terminal_type": null,
+                    "terminal_window_id": null,
+                    "command": "cmd",
+                    "opened_at": "2024-01-01T00:00:00Z"
+                }
+            ]
+        }"#;
+        let result: Result<Session, _> = serde_json::from_str(json);
+        assert!(result.is_err());
     }
 }

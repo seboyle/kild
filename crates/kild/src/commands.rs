@@ -1151,6 +1151,11 @@ fn handle_status_command(matches: &ArgMatches) -> Result<(), Box<dyn std::error:
                             println!("│ Process:     {:<47} │", format!("Stopped (PID: {})", pid));
                         }
                         Err(e) => {
+                            warn!(
+                                event = "cli.status.process_check_failed",
+                                pid = pid,
+                                error = %e
+                            );
                             println!(
                                 "│ Process:     {:<47} │",
                                 format!("Error checking PID {}: {}", pid, e)
