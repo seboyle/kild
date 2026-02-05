@@ -25,7 +25,9 @@ fn capture_process_metadata(
     };
 
     match crate::process::get_process_info(pid) {
-        Ok(info) => (Some(info.name), Some(info.start_time)),
+        Ok(info) => {
+            return (Some(info.name), Some(info.start_time));
+        }
         Err(e) => {
             warn!(
                 event = %format!("core.session.{}_process_info_failed", event_prefix),
@@ -33,12 +35,13 @@ fn capture_process_metadata(
                 error = %e,
                 "Failed to get process metadata after spawn - using spawn result metadata"
             );
-            (
-                spawn_result.process_name.clone(),
-                spawn_result.process_start_time,
-            )
         }
     }
+
+    (
+        spawn_result.process_name.clone(),
+        spawn_result.process_start_time,
+    )
 }
 
 pub fn create_session(
@@ -313,39 +316,43 @@ pub fn destroy_session(name: &str, force: bool) -> Result<(), SessionError> {
         // Kill all tracked processes
         let mut kill_errors: Vec<(u32, String)> = Vec::new();
         for agent_proc in session.agents() {
-            if let Some(pid) = agent_proc.process_id() {
-                info!(
-                    event = "core.session.destroy_kill_started",
-                    pid = pid,
-                    agent = agent_proc.agent()
-                );
-                match crate::process::kill_process(
-                    pid,
-                    agent_proc.process_name(),
-                    agent_proc.process_start_time(),
-                ) {
-                    Ok(()) => {
-                        info!(event = "core.session.destroy_kill_completed", pid = pid);
-                    }
-                    Err(crate::process::ProcessError::NotFound { .. }) => {
-                        info!(event = "core.session.destroy_kill_already_dead", pid = pid);
-                    }
-                    Err(e) => {
-                        if force {
-                            warn!(
-                                event = "core.session.destroy_kill_failed_force_continue",
-                                pid = pid,
-                                error = %e
-                            );
-                        } else {
-                            kill_errors.push((pid, e.to_string()));
-                        }
-                    }
+            let Some(pid) = agent_proc.process_id() else {
+                continue;
+            };
+
+            info!(
+                event = "core.session.destroy_kill_started",
+                pid = pid,
+                agent = agent_proc.agent()
+            );
+
+            let result = crate::process::kill_process(
+                pid,
+                agent_proc.process_name(),
+                agent_proc.process_start_time(),
+            );
+
+            match result {
+                Ok(()) => {
+                    info!(event = "core.session.destroy_kill_completed", pid = pid);
+                }
+                Err(crate::process::ProcessError::NotFound { .. }) => {
+                    info!(event = "core.session.destroy_kill_already_dead", pid = pid);
+                }
+                Err(e) if force => {
+                    warn!(
+                        event = "core.session.destroy_kill_failed_force_continue",
+                        pid = pid,
+                        error = %e
+                    );
+                }
+                Err(e) => {
+                    kill_errors.push((pid, e.to_string()));
                 }
             }
         }
 
-        if !force && !kill_errors.is_empty() {
+        if !kill_errors.is_empty() && !force {
             for (pid, err) in &kill_errors {
                 error!(
                     event = "core.session.destroy_kill_failed",
@@ -353,8 +360,10 @@ pub fn destroy_session(name: &str, force: bool) -> Result<(), SessionError> {
                     error = %err
                 );
             }
+
             let pids: Vec<String> = kill_errors.iter().map(|(p, _)| p.to_string()).collect();
             let (first_pid, first_msg) = kill_errors.into_iter().next().unwrap();
+
             let message = if pids.len() == 1 {
                 format!(
                     "Process still running. Kill it manually or use --force flag: {}",
@@ -367,6 +376,7 @@ pub fn destroy_session(name: &str, force: bool) -> Result<(), SessionError> {
                     pids.join(", ")
                 )
             };
+
             return Err(SessionError::ProcessKillFailed {
                 pid: first_pid,
                 message,
@@ -1204,27 +1214,32 @@ pub fn stop_session(name: &str) -> Result<(), SessionError> {
 
         let mut kill_errors: Vec<(u32, String)> = Vec::new();
         for agent_proc in session.agents() {
-            if let Some(pid) = agent_proc.process_id() {
-                info!(
-                    event = "core.session.stop_kill_started",
-                    pid = pid,
-                    agent = agent_proc.agent()
-                );
-                match crate::process::kill_process(
-                    pid,
-                    agent_proc.process_name(),
-                    agent_proc.process_start_time(),
-                ) {
-                    Ok(()) => {
-                        info!(event = "core.session.stop_kill_completed", pid = pid);
-                    }
-                    Err(crate::process::ProcessError::NotFound { .. }) => {
-                        info!(event = "core.session.stop_kill_already_dead", pid = pid);
-                    }
-                    Err(e) => {
-                        error!(event = "core.session.stop_kill_failed", pid = pid, error = %e);
-                        kill_errors.push((pid, e.to_string()));
-                    }
+            let Some(pid) = agent_proc.process_id() else {
+                continue;
+            };
+
+            info!(
+                event = "core.session.stop_kill_started",
+                pid = pid,
+                agent = agent_proc.agent()
+            );
+
+            let result = crate::process::kill_process(
+                pid,
+                agent_proc.process_name(),
+                agent_proc.process_start_time(),
+            );
+
+            match result {
+                Ok(()) => {
+                    info!(event = "core.session.stop_kill_completed", pid = pid);
+                }
+                Err(crate::process::ProcessError::NotFound { .. }) => {
+                    info!(event = "core.session.stop_kill_already_dead", pid = pid);
+                }
+                Err(e) => {
+                    error!(event = "core.session.stop_kill_failed", pid = pid, error = %e);
+                    kill_errors.push((pid, e.to_string()));
                 }
             }
         }
@@ -1237,8 +1252,10 @@ pub fn stop_session(name: &str) -> Result<(), SessionError> {
                     error = %err
                 );
             }
+
             let pids: Vec<String> = kill_errors.iter().map(|(p, _)| p.to_string()).collect();
             let (first_pid, first_msg) = kill_errors.into_iter().next().unwrap();
+
             let message = if pids.len() == 1 {
                 first_msg
             } else {
@@ -1248,6 +1265,7 @@ pub fn stop_session(name: &str) -> Result<(), SessionError> {
                     pids.join(", ")
                 )
             };
+
             return Err(SessionError::ProcessKillFailed {
                 pid: first_pid,
                 message,
