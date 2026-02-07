@@ -190,10 +190,10 @@ pub fn rebase(dir: &Path, base_branch: &str) -> Result<(), GitError> {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Detect conflicts: exit code 1 with conflict markers in stderr
-    let is_conflict = code == 1
-        && (stderr.contains("CONFLICT")
-            || stderr.contains("failed to merge")
-            || stderr.contains("could not apply"));
+    let has_conflict_marker = stderr.contains("CONFLICT")
+        || stderr.contains("failed to merge")
+        || stderr.contains("could not apply");
+    let is_conflict = code == 1 && has_conflict_marker;
 
     if is_conflict {
         // Auto-abort to leave worktree clean
@@ -202,42 +202,42 @@ pub fn rebase(dir: &Path, base_branch: &str) -> Result<(), GitError> {
             .args(["rebase", "--abort"])
             .output();
 
-        match abort_result {
-            Ok(abort_output) if abort_output.status.success() => {
-                info!(
-                    event = "core.git.rebase_abort_completed",
-                    base = base_branch,
-                    path = %dir.display()
-                );
-            }
-            Ok(abort_output) => {
-                let abort_stderr = String::from_utf8_lossy(&abort_output.stderr);
-                error!(
-                    event = "core.git.rebase_abort_failed",
-                    base = base_branch,
-                    path = %dir.display(),
-                    stderr = %abort_stderr.trim()
-                );
-                return Err(GitError::RebaseAbortFailed {
-                    base_branch: base_branch.to_string(),
-                    worktree_path: dir.to_path_buf(),
-                    message: abort_stderr.trim().to_string(),
-                });
-            }
-            Err(e) => {
-                error!(
-                    event = "core.git.rebase_abort_failed",
-                    base = base_branch,
-                    path = %dir.display(),
-                    error = %e
-                );
-                return Err(GitError::RebaseAbortFailed {
-                    base_branch: base_branch.to_string(),
-                    worktree_path: dir.to_path_buf(),
-                    message: e.to_string(),
-                });
-            }
+        // Handle abort result: log failure but continue to return RebaseConflict
+        if let Err(e) = abort_result {
+            error!(
+                event = "core.git.rebase_abort_failed",
+                base = base_branch,
+                path = %dir.display(),
+                error = %e
+            );
+            return Err(GitError::RebaseAbortFailed {
+                base_branch: base_branch.to_string(),
+                worktree_path: dir.to_path_buf(),
+                message: e.to_string(),
+            });
         }
+
+        let abort_output = abort_result.unwrap();
+        if !abort_output.status.success() {
+            let abort_stderr = String::from_utf8_lossy(&abort_output.stderr);
+            error!(
+                event = "core.git.rebase_abort_failed",
+                base = base_branch,
+                path = %dir.display(),
+                stderr = %abort_stderr.trim()
+            );
+            return Err(GitError::RebaseAbortFailed {
+                base_branch: base_branch.to_string(),
+                worktree_path: dir.to_path_buf(),
+                message: abort_stderr.trim().to_string(),
+            });
+        }
+
+        info!(
+            event = "core.git.rebase_abort_completed",
+            base = base_branch,
+            path = %dir.display()
+        );
 
         warn!(
             event = "core.git.rebase_conflicts",
