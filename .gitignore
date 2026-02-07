@@ -13,4 +13,5 @@ build/
 .claude/PRPs/*
 !.claude/PRPs/branding/
 .archon/
+.claude/skills/archon/
 ROADMAP-DISCUSSION.md

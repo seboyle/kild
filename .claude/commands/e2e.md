@@ -12,6 +12,7 @@ Run a comprehensive end-to-end test of the Shards CLI after merges to main.
 Read the E2E testing guide at `.claude/skills/shards/cookbook/e2e-testing.md` and execute all tests in sequence.
 
 **Key points:**
+
 1. Build the release binary first: `cargo build --release --bin shards`
 2. Use `./target/release/shards` for all commands (not cargo run)
 3. Execute tests in order - if one fails, investigate before continuing
