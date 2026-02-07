@@ -1,7 +1,8 @@
 use crate::errors::KildError;
 
 /// Note: This type intentionally does not implement `Clone` because
-/// `io::Error` (in `GitCommandFailed` and `CanonicalizationFailed`) is not `Clone`.
+/// `io::Error` (in `CanonicalizationFailed`) and `git2::Error` (in `Git2CheckFailed`)
+/// are not `Clone`.
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
     #[error("Path is not a directory")]
@@ -10,8 +11,11 @@ pub enum ProjectError {
     #[error("Path is not a git repository")]
     NotAGitRepo,
 
-    #[error("Git command failed: {source}")]
-    GitCommandFailed { source: std::io::Error },
+    #[error("Git repository check failed: {source}")]
+    Git2CheckFailed {
+        #[from]
+        source: git2::Error,
+    },
 
     #[error("Cannot resolve path: {source}")]
     CanonicalizationFailed { source: std::io::Error },
@@ -34,7 +38,7 @@ impl KildError for ProjectError {
         match self {
             ProjectError::NotADirectory => "PROJECT_NOT_A_DIRECTORY",
             ProjectError::NotAGitRepo => "PROJECT_NOT_GIT_REPO",
-            ProjectError::GitCommandFailed { .. } => "PROJECT_GIT_COMMAND_FAILED",
+            ProjectError::Git2CheckFailed { .. } => "PROJECT_GIT2_CHECK_FAILED",
             ProjectError::CanonicalizationFailed { .. } => "PROJECT_CANONICALIZATION_FAILED",
             ProjectError::NotFound => "PROJECT_NOT_FOUND",
             ProjectError::AlreadyExists => "PROJECT_ALREADY_EXISTS",
@@ -52,7 +56,7 @@ impl KildError for ProjectError {
             | ProjectError::NotFound
             | ProjectError::AlreadyExists => true,
 
-            ProjectError::GitCommandFailed { .. }
+            ProjectError::Git2CheckFailed { .. }
             | ProjectError::SaveFailed { .. }
             | ProjectError::LoadCorrupted { .. } => false,
         }
@@ -80,12 +84,12 @@ mod tests {
     }
 
     #[test]
-    fn test_project_error_git_command_failed() {
-        let error = ProjectError::GitCommandFailed {
-            source: std::io::Error::new(std::io::ErrorKind::NotFound, "git not found"),
+    fn test_project_error_git2_check_failed() {
+        let error = ProjectError::Git2CheckFailed {
+            source: git2::Error::from_str("permission denied"),
         };
-        assert!(error.to_string().contains("Git command failed"));
-        assert_eq!(error.error_code(), "PROJECT_GIT_COMMAND_FAILED");
+        assert!(error.to_string().contains("permission denied"));
+        assert_eq!(error.error_code(), "PROJECT_GIT2_CHECK_FAILED");
         assert!(!error.is_user_error());
     }
 

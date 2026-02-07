@@ -113,9 +113,10 @@ mod tests {
 
     #[test]
     fn test_dispatch_error_project_delegates_is_user_error() {
-        // GitCommandFailed is NOT a user error in ProjectError
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "git not found");
-        let err = DispatchError::Project(ProjectError::GitCommandFailed { source: io_err });
+        // Git2CheckFailed is NOT a user error in ProjectError
+        let err = DispatchError::Project(ProjectError::Git2CheckFailed {
+            source: git2::Error::from_str("permission denied"),
+        });
         assert!(!err.is_user_error());
     }
 }
