@@ -1,11 +1,12 @@
 use serde::Serialize;
 use std::path::PathBuf;
 
-/// Git diff statistics for a worktree.
+/// Git diff statistics.
 ///
-/// Represents the number of lines added, removed, and files changed
-/// between the index (staging area) and the working directory.
-/// This captures **unstaged changes only**, not staged changes.
+/// Generic container for insertions, deletions, and files changed.
+/// Context-dependent meaning:
+/// - In `GitStats.diff_stats`: unstaged changes (index vs working directory).
+/// - In `BranchHealth.diff_vs_base`: total branch changes (merge base vs branch tip).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct DiffStats {
     /// Number of lines added
@@ -167,6 +168,71 @@ impl GitStats {
     pub fn is_empty(&self) -> bool {
         self.diff_stats.is_none() && self.worktree_status.is_none()
     }
+}
+
+/// Commit activity metrics for a branch.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct CommitActivity {
+    /// Total commits on branch since diverging from base.
+    pub commits_since_base: usize,
+    /// Timestamp of the last commit (RFC3339). None if no commits.
+    pub last_commit_time: Option<String>,
+}
+
+/// Base branch drift metrics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BaseBranchDrift {
+    /// Commits ahead of base branch (on kild branch, not on base).
+    pub ahead: usize,
+    /// Commits base branch has gained since kild branched off.
+    pub behind: usize,
+    /// Name of the base branch used for comparison.
+    pub base_branch: String,
+}
+
+/// Result of in-memory merge conflict detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConflictStatus {
+    /// No conflicts detected — branch can merge cleanly.
+    Clean,
+    /// Conflicts detected — branch cannot merge without resolution.
+    Conflicts,
+    /// Check failed — conflict status is unreliable.
+    Unknown,
+}
+
+impl std::fmt::Display for ConflictStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConflictStatus::Clean => write!(f, "Clean"),
+            ConflictStatus::Conflicts => write!(f, "Conflicts"),
+            ConflictStatus::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+/// Comprehensive branch health for a kild.
+///
+/// # Field Relationships
+/// - `conflict_status`: Result of merging this branch into `drift.base_branch` (in-memory).
+/// - `drift.ahead/behind`: Commit counts relative to base. Meaningful even without a remote.
+/// - `diff_vs_base`: `None` if merge base calculation failed (logged as warning).
+/// - `has_remote`: When false, push/PR-related readiness checks are skipped (local-only repo).
+/// - `created_at`: Passthrough from session metadata, not validated here.
+#[derive(Debug, Clone, Serialize)]
+pub struct BranchHealth {
+    pub branch: String,
+    pub created_at: String,
+    pub commit_activity: CommitActivity,
+    pub drift: BaseBranchDrift,
+    /// Total diff from merge base to branch tip (how big the PR will be).
+    /// `None` if merge base could not be found or diff computation failed.
+    pub diff_vs_base: Option<DiffStats>,
+    /// Result of in-memory merge conflict detection.
+    pub conflict_status: ConflictStatus,
+    /// Whether any remote is configured. When false, PR-based readiness is skipped.
+    pub has_remote: bool,
 }
 
 impl ProjectInfo {
@@ -352,6 +418,79 @@ mod tests {
         assert_eq!(details["staged_files"], 3);
         assert_eq!(details["modified_files"], 2);
         assert_eq!(details["untracked_files"], 1);
+    }
+
+    #[test]
+    fn test_commit_activity_default() {
+        let activity = CommitActivity::default();
+        assert_eq!(activity.commits_since_base, 0);
+        assert!(activity.last_commit_time.is_none());
+    }
+
+    #[test]
+    fn test_base_branch_drift_construction() {
+        let drift = BaseBranchDrift {
+            ahead: 3,
+            behind: 5,
+            base_branch: "main".to_string(),
+        };
+        assert_eq!(drift.ahead, 3);
+        assert_eq!(drift.behind, 5);
+        assert_eq!(drift.base_branch, "main");
+    }
+
+    #[test]
+    fn test_branch_health_serializes_to_json() {
+        let health = BranchHealth {
+            branch: "feature-auth".to_string(),
+            created_at: "2026-02-09T10:00:00Z".to_string(),
+            commit_activity: CommitActivity {
+                commits_since_base: 4,
+                last_commit_time: Some("2026-02-09T11:48:00Z".to_string()),
+            },
+            drift: BaseBranchDrift {
+                ahead: 4,
+                behind: 12,
+                base_branch: "main".to_string(),
+            },
+            diff_vs_base: Some(DiffStats {
+                insertions: 450,
+                deletions: 30,
+                files_changed: 12,
+            }),
+            conflict_status: ConflictStatus::Clean,
+            has_remote: true,
+        };
+        let value = serde_json::to_value(&health).expect("BranchHealth should serialize");
+        assert_eq!(value["branch"], "feature-auth");
+        assert_eq!(value["commit_activity"]["commits_since_base"], 4);
+        assert_eq!(value["drift"]["behind"], 12);
+        assert_eq!(value["diff_vs_base"]["insertions"], 450);
+        assert_eq!(value["conflict_status"], "clean");
+        assert_eq!(value["has_remote"], true);
+    }
+
+    #[test]
+    fn test_conflict_status_display() {
+        assert_eq!(ConflictStatus::Clean.to_string(), "Clean");
+        assert_eq!(ConflictStatus::Conflicts.to_string(), "Conflicts");
+        assert_eq!(ConflictStatus::Unknown.to_string(), "Unknown");
+    }
+
+    #[test]
+    fn test_conflict_status_serde() {
+        assert_eq!(
+            serde_json::to_string(&ConflictStatus::Clean).unwrap(),
+            "\"clean\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ConflictStatus::Conflicts).unwrap(),
+            "\"conflicts\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ConflictStatus::Unknown).unwrap(),
+            "\"unknown\""
+        );
     }
 
     #[test]
