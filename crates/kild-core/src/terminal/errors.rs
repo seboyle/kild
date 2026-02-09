@@ -32,6 +32,11 @@ pub enum TerminalError {
     #[error("Failed to hide terminal window: {message}")]
     HideFailed { message: String },
 
+    /// Native window operation failed (Core Graphics/Accessibility API).
+    /// Message should describe the specific operation and failure cause.
+    #[error("Native window operation failed: {message}")]
+    NativeWindowError { message: String },
+
     #[error("IO error during terminal operation: {source}")]
     IoError {
         #[from]
@@ -52,6 +57,7 @@ impl KildError for TerminalError {
             TerminalError::HyprlandIpcFailed { .. } => "HYPRLAND_IPC_FAILED",
             TerminalError::FocusFailed { .. } => "TERMINAL_FOCUS_FAILED",
             TerminalError::HideFailed { .. } => "TERMINAL_HIDE_FAILED",
+            TerminalError::NativeWindowError { .. } => "NATIVE_WINDOW_ERROR",
             TerminalError::IoError { .. } => "TERMINAL_IO_ERROR",
         }
     }
@@ -67,6 +73,7 @@ impl KildError for TerminalError {
                 | TerminalError::HyprlandIpcFailed { .. }
                 | TerminalError::FocusFailed { .. }
                 | TerminalError::HideFailed { .. }
+                | TerminalError::NativeWindowError { .. }
         )
     }
 }
@@ -149,6 +156,19 @@ mod tests {
     fn test_invalid_command() {
         let error = TerminalError::InvalidCommand;
         assert_eq!(error.to_string(), "Command is empty or invalid");
+        assert!(error.is_user_error());
+    }
+
+    #[test]
+    fn test_native_window_error() {
+        let error = TerminalError::NativeWindowError {
+            message: "Failed to enumerate windows via Core Graphics".to_string(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "Native window operation failed: Failed to enumerate windows via Core Graphics"
+        );
+        assert_eq!(error.error_code(), "NATIVE_WINDOW_ERROR");
         assert!(error.is_user_error());
     }
 }
