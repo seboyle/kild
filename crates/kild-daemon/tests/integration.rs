@@ -70,6 +70,7 @@ async fn test_create_session_and_list() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -120,6 +121,7 @@ async fn test_attach_and_read_output() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -209,13 +211,31 @@ async fn test_duplicate_session_id_rejected() {
 
     // Create first session
     client
-        .create_session("dup-test", "/tmp", "/bin/sh", &[], &HashMap::new(), 24, 80)
+        .create_session(
+            "dup-test",
+            "/tmp",
+            "/bin/sh",
+            &[],
+            &HashMap::new(),
+            24,
+            80,
+            false,
+        )
         .await
         .unwrap();
 
     // Try to create a session with the same ID
     let result = client
-        .create_session("dup-test", "/tmp", "/bin/sh", &[], &HashMap::new(), 24, 80)
+        .create_session(
+            "dup-test",
+            "/tmp",
+            "/bin/sh",
+            &[],
+            &HashMap::new(),
+            24,
+            80,
+            false,
+        )
         .await;
     assert!(result.is_err());
 
@@ -248,6 +268,7 @@ async fn test_create_session_with_invalid_command() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await;
     assert!(result.is_err(), "Should fail with invalid command");
@@ -278,6 +299,7 @@ async fn test_multiple_clients_attach_to_session() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -328,6 +350,7 @@ async fn test_pty_exit_transitions_session_to_stopped() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -394,6 +417,7 @@ async fn test_stop_session_idempotent() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -439,6 +463,7 @@ async fn test_destroy_running_session() {
             &HashMap::new(),
             24,
             80,
+            false,
         )
         .await
         .unwrap();
@@ -461,6 +486,48 @@ async fn test_destroy_running_session() {
     let result = client.get_session("destroy-running").await;
     assert!(result.is_err(), "Destroyed session should not be found");
 
+    client.shutdown().await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(3), server_handle).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_create_session_with_login_shell() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_config(dir.path());
+    let socket_path = config.socket_path.clone();
+
+    let server_handle = tokio::spawn(async move { kild_daemon::run_server(config).await });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let mut client = DaemonClient::connect(&socket_path).await.unwrap();
+
+    // Create session with login shell mode (bare shell)
+    let working_dir = dir.path().to_string_lossy().to_string();
+    let session = client
+        .create_session(
+            "shell-test",
+            &working_dir,
+            "", // Command is ignored in login shell mode
+            &[],
+            &HashMap::new(),
+            24,
+            80,
+            true, // use_login_shell=true
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(session.id, "shell-test");
+    assert_eq!(session.status, "running");
+
+    // Verify session is listed
+    let sessions = client.list_sessions(None).await.unwrap();
+    assert_eq!(sessions.len(), 1);
+
+    // Cleanup
+    client.stop_session("shell-test").await.unwrap();
     client.shutdown().await.unwrap();
 
     let result = tokio::time::timeout(Duration::from_secs(3), server_handle).await;
