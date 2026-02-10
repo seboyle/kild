@@ -140,16 +140,14 @@ pub fn destroy_session(name: &str, force: bool) -> Result<(), SessionError> {
                     agent = agent_proc.agent()
                 );
                 if let Err(e) = crate::daemon::client::destroy_daemon_session(daemon_sid, force) {
-                    if force {
-                        warn!(
-                            event = "core.session.destroy_daemon_failed_force_continue",
-                            daemon_session_id = daemon_sid,
-                            error = %e
-                        );
-                    } else {
-                        let pid = agent_proc.process_id().unwrap_or(0);
-                        kill_errors.push((pid, e.to_string()));
-                    }
+                    warn!(
+                        event = "core.session.destroy_daemon_failed_continue",
+                        daemon_session_id = daemon_sid,
+                        error = %e,
+                        force = force,
+                    );
+                    // Don't add to kill_errors — daemon cleanup failure is non-fatal.
+                    // The kild session file is being removed regardless.
                 }
             } else {
                 // Terminal-managed: close window + kill process
@@ -231,6 +229,105 @@ pub fn destroy_session(name: &str, force: bool) -> Result<(), SessionError> {
                 message,
             });
         }
+    }
+
+    // 3b. Clean up tmux shim state and destroy child shim panes
+    if let Some(home) = dirs::home_dir() {
+        let shim_dir = home.join(".kild").join("shim").join(&session.id);
+        if shim_dir.exists() {
+            // Destroy any child shim panes that may still be running
+            let panes_path = shim_dir.join("panes.json");
+            match std::fs::read_to_string(&panes_path) {
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(registry) => {
+                        if let Some(panes) = registry.get("panes").and_then(|p| p.as_object()) {
+                            for (pane_id, entry) in panes {
+                                if pane_id == "%0" {
+                                    continue; // Skip the parent pane (already destroyed above)
+                                }
+                                if let Some(child_sid) =
+                                    entry.get("daemon_session_id").and_then(|s| s.as_str())
+                                {
+                                    info!(
+                                        event = "core.session.destroy_shim_child",
+                                        pane_id = pane_id,
+                                        daemon_session_id = child_sid
+                                    );
+                                    if let Err(e) = crate::daemon::client::destroy_daemon_session(
+                                        child_sid, true,
+                                    ) {
+                                        error!(
+                                            event = "core.session.destroy_shim_child_failed",
+                                            pane_id = pane_id,
+                                            daemon_session_id = child_sid,
+                                            error = %e,
+                                        );
+                                        eprintln!(
+                                            "Warning: Failed to destroy agent team PTY {}: {}",
+                                            pane_id, e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            event = "core.session.shim_registry_parse_failed",
+                            session_id = session.id,
+                            path = %panes_path.display(),
+                            error = %e,
+                        );
+                        eprintln!(
+                            "Warning: Could not parse agent team state at {} — child PTYs may be orphaned: {}",
+                            panes_path.display(),
+                            e
+                        );
+                    }
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // No panes.json means no child panes to clean up
+                }
+                Err(e) => {
+                    error!(
+                        event = "core.session.shim_registry_read_failed",
+                        session_id = session.id,
+                        path = %panes_path.display(),
+                        error = %e,
+                    );
+                    eprintln!(
+                        "Warning: Could not read agent team state at {} — child PTYs may be orphaned: {}",
+                        panes_path.display(),
+                        e
+                    );
+                }
+            }
+
+            if let Err(e) = std::fs::remove_dir_all(&shim_dir) {
+                error!(
+                    event = "core.session.shim_cleanup_failed",
+                    session_id = session.id,
+                    path = %shim_dir.display(),
+                    error = %e,
+                );
+                eprintln!(
+                    "Warning: Failed to remove agent team state at {}: {}",
+                    shim_dir.display(),
+                    e
+                );
+            } else {
+                info!(
+                    event = "core.session.shim_cleanup_completed",
+                    session_id = session.id
+                );
+            }
+        }
+    } else {
+        warn!(
+            event = "core.session.shim_cleanup_skipped",
+            session_id = session.id,
+            "HOME not set, skipping shim cleanup"
+        );
     }
 
     // 4. Remove git worktree
