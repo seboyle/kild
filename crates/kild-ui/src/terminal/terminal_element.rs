@@ -10,7 +10,7 @@ use gpui::{
 };
 
 use super::colors;
-use super::state::KildListener;
+use super::state::{KildListener, ResizeHandle};
 use super::types::BatchedTextRun;
 use crate::theme;
 
@@ -42,11 +42,20 @@ struct PreparedCursor {
 pub struct TerminalElement {
     term: Arc<FairMutex<Term<KildListener>>>,
     has_focus: bool,
+    resize_handle: ResizeHandle,
 }
 
 impl TerminalElement {
-    pub fn new(term: Arc<FairMutex<Term<KildListener>>>, has_focus: bool) -> Self {
-        Self { term, has_focus }
+    pub fn new(
+        term: Arc<FairMutex<Term<KildListener>>>,
+        has_focus: bool,
+        resize_handle: ResizeHandle,
+    ) -> Self {
+        Self {
+            term,
+            has_focus,
+            resize_handle,
+        }
     }
 
     fn terminal_font() -> Font {
@@ -164,6 +173,20 @@ impl Element for TerminalElement {
                 cell_width,
                 cell_height,
             };
+        }
+
+        // Resize PTY and terminal grid if dimensions changed.
+        // Must happen before term.lock() so the snapshot reflects the new size.
+        if let Err(e) = self
+            .resize_handle
+            .resize_if_changed(rows as u16, cols as u16)
+        {
+            tracing::error!(
+                event = "ui.terminal.resize_failed",
+                rows = rows,
+                cols = cols,
+                error = %e,
+            );
         }
 
         // FairMutex (alacritty_terminal::sync) does not poison — it's not
