@@ -13,5 +13,5 @@ pub use remote::{fetch_remote, rebase_worktree};
 pub use removal::{remove_worktree, remove_worktree_by_path, remove_worktree_force};
 pub use types::{
     BaseBranchDrift, BranchHealth, CleanKild, CommitActivity, ConflictStatus, DiffStats,
-    FileOverlap, GitStats, OverlapReport, UncommittedDetails, WorktreeStatus,
+    FileOverlap, GitStats, MergeReadiness, OverlapReport, UncommittedDetails, WorktreeStatus,
 };
