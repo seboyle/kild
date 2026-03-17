@@ -103,14 +103,31 @@ pub fn kill_process(
                 });
             }
 
-            if process.kill() {
-                Ok(())
-            } else {
-                Err(ProcessError::KillFailed {
+            if !process.kill() {
+                return Err(ProcessError::KillFailed {
                     pid,
                     message: "Process kill signal failed".to_string(),
-                })
+                });
             }
+
+            // Best-effort wait: give the process up to 500ms to exit after
+            // SIGKILL. Reuses the existing `system` to avoid repeated allocations.
+            let start = std::time::Instant::now();
+            while start.elapsed() < std::time::Duration::from_millis(500) {
+                system.refresh_processes(ProcessesToUpdate::Some(&[pid_obj]), true);
+                if system.process(pid_obj).is_none() {
+                    return Ok(());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            debug!(
+                event = "core.process.kill_wait_timeout",
+                pid = pid,
+                message = "process did not exit within 500ms after SIGKILL"
+            );
+
+            Ok(())
         }
         None => Err(ProcessError::NotFound { pid }),
     }
